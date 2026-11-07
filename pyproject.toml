@@ -13,6 +13,7 @@ dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+exe = ["pyinstaller>=6"]
 
 [project.scripts]
 r3e-coach = "r3e_coach.cli:main"

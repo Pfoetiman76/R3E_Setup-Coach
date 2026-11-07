@@ -33,6 +33,9 @@ def build_parser():
     b.add_argument("--cwd", help="Arbeitsverzeichnis für die Bridge (oder \"bridge_cwd\" in der Config)")
     b.add_argument("--args", nargs=argparse.REMAINDER,
                    help="Argumente für die Bridge, z. B. --args -- --port 5566")
+
+    g = sub.add_parser("gui", help="Grafische Oberfläche starten (tkinter)")
+    _add_common(g)
     return p
 
 
@@ -61,13 +64,17 @@ def _run_bridge(args):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("analyze", "bridge"):
+    if argv and argv[0] in ("analyze", "bridge", "gui"):
         args = build_parser().parse_args(argv)
     else:
         args = build_parser().parse_args(["analyze", *argv])
     try:
         if args.command == "bridge":
             return _run_bridge(args)
+        if args.command == "gui":
+            from .gui import main_gui
+            main_gui(lang=args.lang)
+            return 0
         return _run_analyze(args)
     except BridgeError as exc:
         print(f"Fehler: {exc}", file=sys.stderr)

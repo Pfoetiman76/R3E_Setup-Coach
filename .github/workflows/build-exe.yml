@@ -1,0 +1,24 @@
+name: build-exe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install .[exe]
+      - run: pyinstaller --onefile --windowed --name "R3E-Setup-Coach" r3e-coach-gui.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: R3E-Setup-Coach-windows
+          path: dist/R3E-Setup-Coach.exe
+          retention-days: 30

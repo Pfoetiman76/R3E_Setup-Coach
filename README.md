@@ -27,6 +27,28 @@ pip install .
 r3e-coach mein-log.csv
 ```
 
+## GUI und Windows-Exe
+
+Grafische Oberfläche (tkinter, keine Zusatzabhängigkeiten):
+
+```bash
+r3e-coach gui          # oder: python r3e-coach-gui.py
+```
+
+Die Oberfläche hat zwei Bereiche: **Bridge starten/stoppen** (Exe-Pfad ist aus `.r3e-coach.json` vorbefüllt) und **Telemetrie analysieren** (CSV per Dialog wählen, Bericht erscheint im Fenster).
+
+Als `.exe` bauen (auf dem Windows-PC einmalig ausführen):
+
+```bat
+scripts\build_exe.bat
+```
+
+Ergebnis: `dist\R3E-Setup-Coach.exe` (Fenstermodus, eine Datei; optional `pip install .[exe]` vorher). Die Exe liest `.r3e-coach.json` aus dem Arbeitsverzeichnis, in dem sie gestartet wird.
+
+### Exe über GitHub Actions bauen (ohne lokalen Build)
+
+Der Workflow `.github/workflows/build-exe.yml` baut die Exe auf einem `windows-latest`-Runner — bei jedem Push/PR auf `main` und manuell über **Actions → build-exe → Run workflow**. Download: im fertigen Run unter **Artifacts** (`R3E-Setup-Coach-windows` → `R3E-Setup-Coach.exe`).
+
 ## Bridge-Exe automatisch starten (RaceRoom → MoTeC)
 
 Damit MoTeC i2 überhaupt Daten von RaceRoom bekommt, läuft üblicherweise ein kleines Bridge-Exe. Der Coach kann es starten, überwachen und per **Strg+C kontrolliert beenden**:
