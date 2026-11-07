@@ -27,6 +27,38 @@ pip install .
 r3e-coach mein-log.csv
 ```
 
+## Bridge-Exe automatisch starten (RaceRoom → MoTeC)
+
+Damit MoTeC i2 überhaupt Daten von RaceRoom bekommt, läuft üblicherweise ein kleines Bridge-Exe. Der Coach kann es starten, überwachen und per **Strg+C kontrolliert beenden**:
+
+```bash
+r3e-coach bridge --exe "C:\Tools\R3E_MoTeC_Bridge.exe"
+r3e-coach bridge --exe "C:\Tools\R3E_MoTeC_Bridge.exe" --args -- --port 5566
+```
+
+Damit der Pfad nicht jedes Mal eingegeben werden muss, legt eine Config an (wird automatisch aus dem aktuellen Verzeichnis geladen, wenn sie `.r3e-coach.json` heißt, sonst per `--config`):
+
+```json
+{
+  "bridge_exe": "C:\\Tools\\R3E_MoTeC_Bridge.exe",
+  "bridge_args": ["--port", "5566"],
+  "bridge_cwd": "C:\\Tools"
+}
+```
+
+```bash
+r3e-coach bridge            # nutzt ./.r3e-coach.json
+r3e-coach bridge --config "C:\Users\Du\r3e-coach.json"
+```
+
+Ablauf: `r3e-coach bridge` starten → RaceRoom starten → in MoTeC i2 loggen → fahren → Strg+C beendet die Bridge sauber. Danach die CSV exportieren und analysieren:
+
+```bash
+r3e-coach "C:\MoTeC\i2\Exports\mein-log.csv"
+```
+
+Tipp: Für ganz ohne Handgriffe kann die Bridge auch über einen Windows-Autostart-Eintrag oder den Taskplaner beim Login gestartet werden.
+
 ## Unterstützte Kanäle
 
 Kanalnamen werden robust per Alias-Matching erkannt (Groß-/Kleinschreibung und Sonderzeichen egal). Sinnvoll sind u. a.:
