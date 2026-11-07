@@ -43,11 +43,11 @@ Als `.exe` bauen (auf dem Windows-PC einmalig ausführen):
 scripts\build_exe.bat
 ```
 
-Ergebnis: `dist\R3E-Setup-Coach.exe` (Fenstermodus, eine Datei; optional `pip install .[exe]` vorher). Die Exe liest `.r3e-coach.json` aus dem Arbeitsverzeichnis, in dem sie gestartet wird.
+Ergebnis: `dist\R3E-Setup-Coach\R3E-Setup-Coach.exe` (Fenstermodus; `onedir`-Build ohne Temp-Entpacken — weniger AV-False-Positives als `onefile`; optional `pip install .[exe]` vorher). Die Exe liest `.r3e-coach.json` aus dem Ordner, in dem sie gestartet wird.
 
 ### Exe über GitHub Actions bauen (ohne lokalen Build)
 
-Der Workflow `.github/workflows/build-exe.yml` baut die Exe auf einem `windows-latest`-Runner — bei jedem Push/PR auf `main` und manuell über **Actions → build-exe → Run workflow**. Download: im fertigen Run unter **Artifacts** (`R3E-Setup-Coach-windows` → `R3E-Setup-Coach.exe`).
+Der Workflow `.github/workflows/build-exe.yml` baut die App auf einem `windows-latest`-Runner — bei jedem Push/PR auf `main` und manuell über **Actions → build-exe → Run workflow**. Download: im fertigen Run unter **Artifacts** (`R3E-Setup-Coach-windows` → kompletter Ordner `R3E-Setup-Coach\` inkl. `R3E-Setup-Coach.exe` und `SHA256.txt`).
 
 ## Bridge-Exe automatisch starten (RaceRoom → MoTeC)
 

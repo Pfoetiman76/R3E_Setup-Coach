@@ -16,12 +16,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install .[exe]
-      - run: pyinstaller --onefile --windowed --noupx --name "R3E-Setup-Coach" r3e-coach-gui.py
-      - run: powershell "(Get-FileHash dist\R3E-Setup-Coach.exe -Algorithm SHA256).Hash | Out-File dist\SHA256.txt -Encoding ascii"
+      - run: pyinstaller --onedir --windowed --noupx --name "R3E-Setup-Coach" r3e-coach-gui.py
+      - run: powershell "(Get-FileHash dist\R3E-Setup-Coach\R3E-Setup-Coach.exe -Algorithm SHA256).Hash | Out-File dist\R3E-Setup-Coach\SHA256.txt -Encoding ascii"
       - uses: actions/upload-artifact@v4
         with:
           name: R3E-Setup-Coach-windows
-          path: |
-            dist/R3E-Setup-Coach.exe
-            dist/SHA256.txt
+          path: dist/R3E-Setup-Coach/
           retention-days: 30
