@@ -57,6 +57,8 @@ Ablauf: `r3e-coach bridge` starten → RaceRoom starten → in MoTeC i2 loggen �
 r3e-coach "C:\MoTeC\i2\Exports\mein-log.csv"
 ```
 
+Hinweis: `.r3e-coach.json` enthält einen rechnerspezifischen Pfad (z. B. `S:\Downloads\R2M.exe`) — beim Klonen auf einem anderen PC entsprechend anpassen.
+
 Tipp: Für ganz ohne Handgriffe kann die Bridge auch über einen Windows-Autostart-Eintrag oder den Taskplaner beim Login gestartet werden.
 
 ## Unterstützte Kanäle
