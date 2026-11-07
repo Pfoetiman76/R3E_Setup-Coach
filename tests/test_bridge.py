@@ -59,16 +59,28 @@ def test_run_bridge_quick_exit(capsys):
     assert "Exit-Code 0" in out
 
 
-def test_cli_bridge_with_standin(tmp_path, capsys):
+def test_cli_bridge_with_standin(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
     rc = main(["bridge", "--exe", sys.executable, "--args", "-c", "print(1)", "--lang", "de"])
     assert rc == 0
     assert "Bridge gestartet" in capsys.readouterr().out
 
 
-def test_cli_bridge_missing_exe_returns_2(capsys):
+def test_cli_bridge_missing_exe_returns_2(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
     rc = main(["bridge", "--exe", "/nicht/vorhanden.exe"])
     assert rc == 2
     assert "nicht gefunden" in capsys.readouterr().err
+
+
+def test_cli_bridge_missing_cwd_returns_2(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    cfg = tmp_path / ".r3e-coach.json"
+    cfg.write_text(json.dumps({"bridge_exe": sys.executable, "bridge_cwd": "/gibt/es/nicht"}),
+                   encoding="utf-8")
+    rc = main(["bridge", "--lang", "de"])
+    assert rc == 2
+    assert "Arbeitsverzeichnis" in capsys.readouterr().err
 
 
 def test_cli_bridge_uses_config(tmp_path, monkeypatch, capsys):

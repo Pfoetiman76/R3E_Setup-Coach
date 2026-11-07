@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 
 from .bridge import BridgeError, find_config, load_config, resolve_args, resolve_exe, run_bridge
@@ -53,6 +54,8 @@ def _run_bridge(args):
     exe = resolve_exe(args.exe, config)
     bridge_args = resolve_args(args.args, config)
     cwd = args.cwd or config.get("bridge_cwd")
+    if cwd and not os.path.isdir(cwd):
+        raise BridgeError(f"Arbeitsverzeichnis existiert nicht: {cwd}")
     return run_bridge(exe, bridge_args, cwd=cwd, lang=args.lang)
 
 
