@@ -6,6 +6,7 @@ from .bridge import (BridgeError, BridgeProcess, find_config, load_config, resol
 from .parser import parse_motec_csv
 from .report import render_text
 from .rules import Ctx, analyze
+from .updater import check_for_update
 
 LABELS = {
     "de": {
@@ -23,6 +24,7 @@ LABELS = {
         "stopped": "Bridge beendet.",
         "exited": "Bridge hat sich selbst beendet (Exit {rc}).",
         "need_csv": "Bitte CSV-Datei auswählen.",
+        "update_available": "Update verfügbar: {tag} — bitte `r3e-coach update` ausführen (oder beim nächsten Start installieren).",
     },
     "en": {
         "title": "R3E Setup Coach",
@@ -39,6 +41,7 @@ LABELS = {
         "stopped": "Bridge stopped.",
         "exited": "Bridge exited on its own (exit {rc}).",
         "need_csv": "Please pick a CSV file.",
+        "update_available": "Update available: {tag} — run `r3e-coach update` (installed on next start).",
     },
 }
 
@@ -80,6 +83,7 @@ class CoachGui:
         ttk.Label(root, textvariable=self.status_var, foreground="blue").pack(anchor="w", padx=8)
         self.output = scrolledtext.ScrolledText(root, wrap="word", height=22)
         self.output.pack(fill="both", expand=True, padx=8, pady=6)
+        self._check_update()
 
     def _set_status(self, key, **kwargs):
         self.status_var.set(self.t[key].format(**kwargs) if kwargs else self.t[key])
@@ -134,6 +138,14 @@ class CoachGui:
     def _show(self, text):
         self.output.delete("1.0", "end")
         self.output.insert("1.0", text)
+
+    def _check_update(self):
+        try:
+            info = check_for_update()
+        except Exception:
+            info = None
+        if info is not None:
+            self._show(self.t["update_available"].format(tag=info.tag))
 
 
 def main_gui(lang="de"):

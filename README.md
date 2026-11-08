@@ -49,6 +49,12 @@ Ergebnis: `dist\R3E-Setup-Coach\R3E-Setup-Coach.exe` (Fenstermodus; `onedir`-Bui
 
 Der Workflow `.github/workflows/build-exe.yml` baut die App auf einem `windows-latest`-Runner — bei jedem Push/PR auf `main` und manuell über **Actions → build-exe → Run workflow**. Download: im fertigen Run unter **Artifacts** (`R3E-Setup-Coach-windows` → kompletter Ordner `R3E-Setup-Coach\` inkl. `R3E-Setup-Coach.exe` und `SHA256.txt`).
 
+### Releases & automatisches Update (wie bei PitBoss)
+
+- Gepushter Tag `v*.*.*` (z. B. `git tag v0.2.0 && git push origin v0.2.0`) triggert `.github/workflows/release.yml`: baut die Exe auf `windows-latest` und veröffentlicht ein **GitHub-Release** mit `R3E-Setup-Coach-win.zip` + `SHA256.txt`
+- Update-Prüfung in der App: `r3e-coach update` (oder `--check` nur prüfen) vergleicht die installierte Version mit `releases/latest`, lädt ein neues Release als `.new` herunter und installiert es beim nächsten Start (alte Exe wird als `.old` gesichert)
+- Die GUI prüft beim Start automatisch und zeigt verfügbare Updates an
+
 ## Bridge-Exe automatisch starten (RaceRoom → MoTeC)
 
 Damit MoTeC i2 überhaupt Daten von RaceRoom bekommt, läuft üblicherweise ein kleines Bridge-Exe. Der Coach kann es starten, überwachen und per **Strg+C kontrolliert beenden**:

@@ -36,6 +36,10 @@ def build_parser():
 
     g = sub.add_parser("gui", help="Grafische Oberfläche starten (tkinter)")
     _add_common(g)
+
+    u = sub.add_parser("update", help="Auf neues GitHub-Release prüfen und herunterladen")
+    _add_common(u)
+    u.add_argument("--check", action="store_true", help="Nur prüfen, nicht herunterladen")
     return p
 
 
@@ -64,7 +68,7 @@ def _run_bridge(args):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("analyze", "bridge", "gui"):
+    if argv and argv[0] in ("analyze", "bridge", "gui", "update"):
         args = build_parser().parse_args(argv)
     else:
         args = build_parser().parse_args(["analyze", *argv])
@@ -75,6 +79,9 @@ def main(argv=None):
             from .gui import main_gui
             main_gui(lang=args.lang)
             return 0
+        if args.command == "update":
+            from .updater import run_update
+            return run_update(lang=args.lang, check_only=args.check)
         return _run_analyze(args)
     except BridgeError as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
