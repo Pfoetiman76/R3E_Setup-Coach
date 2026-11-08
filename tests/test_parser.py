@@ -49,3 +49,14 @@ def test_non_numeric_cells_become_none(tmp_path):
     f.write_text("Time,Speed\n0,abc\n1,120\n", encoding="utf-8")
     s = parse_motec_csv(str(f))
     assert s.col("speed") == [None, 120.0]
+
+
+def test_semicolon_delimited_csv(tmp_path):
+    f = tmp_path / "r2m.csv"
+    f.write_text("Time;Speed;Tyre Temp FL;Tyre Temp FR;Tyre Temp RL;Tyre Temp RR\n0;150;90;90;80;80\n1;160;91;91;81;81\n",
+                 encoding="utf-8")
+    s = parse_motec_csv(str(f))
+    assert s.has("speed")
+    assert s.has("tyre_temp_fl")
+    assert s.col("speed") == [150.0, 160.0]
+    assert len(s) == 2

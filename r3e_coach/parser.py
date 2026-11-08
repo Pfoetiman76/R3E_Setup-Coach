@@ -8,8 +8,9 @@ SECTION_RE = re.compile(r"^\[\s*([^\]]+?)\s*\]\s*$")
 
 
 def _cells(line):
+    delimiter = ";" if (";" in line and "," not in line) else "\t" if ("\t" in line and "," not in line and ";" not in line) else ","
     try:
-        row = next(csv.reader([line]))
+        row = next(csv.reader([line], delimiter=delimiter))
     except csv.Error:
         return []
     return [c.strip() for c in row]
