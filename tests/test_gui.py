@@ -21,7 +21,12 @@ def test_gui_subcommand_parses():
 
 
 def test_gui_module_importable():
-    _gui()
+    gui = _gui()
+    for lang in ("de", "en"):
+        for key in ("update_btn", "update_downloading", "update_restart", "update_nextstart", "update_error"):
+            assert key in gui.LABELS[lang]
+    assert hasattr(gui.CoachGui, "install_update")
+    assert hasattr(gui.CoachGui, "_on_update_done")
 
 
 def test_load_gui_config(tmp_path, monkeypatch):

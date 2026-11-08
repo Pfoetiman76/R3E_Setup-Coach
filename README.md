@@ -53,7 +53,7 @@ Der Workflow `.github/workflows/build-exe.yml` baut die App auf einem `windows-l
 
 - Gepushter Tag `v*.*.*` (z. B. `git tag v0.2.0 && git push origin v0.2.0`) triggert `.github/workflows/release.yml`: baut die Exe auf `windows-latest` und veröffentlicht ein **GitHub-Release** mit `R3E-Setup-Coach-win.zip` + `SHA256.txt`
 - Update-Prüfung in der App: `r3e-coach update` (oder `--check` nur prüfen) vergleicht die installierte Version mit `releases/latest`, lädt ein neues Release als `.new` herunter und installiert es beim nächsten Start (alte Exe wird als `.old` gesichert)
-- Die GUI prüft beim Start automatisch und zeigt verfügbare Updates an
+- Die GUI prüft beim Start automatisch, zeigt verfügbare Updates an und installiert sie per **„Update installieren"-Button** (Download im Hintergrund, sofortige Installation + Neustart der App)
 
 ## Bridge-Exe automatisch starten (RaceRoom → MoTeC)
 
