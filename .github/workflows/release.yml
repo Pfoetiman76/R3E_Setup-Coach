@@ -20,11 +20,11 @@ jobs:
       - run: powershell "Compress-Archive -Path dist\R3E-Setup-Coach\* -DestinationPath dist\R3E-Setup-Coach-win.zip -Force"
       - run: choco install innosetup -y
       - run: powershell -File installer\build-installer.ps1
-      - run: powershell "(Get-FileHash dist-installer\R3E-Setup-Coach-Setup.exe -Algorithm SHA256).Hash | Out-File dist-installer\SHA256-Setup.txt -Encoding ascii"
+      - run: powershell "$s = Get-ChildItem -Recurse -Filter 'R3E-Setup-Coach-Setup.exe' | Select-Object -First 1; Copy-Item $s.FullName 'dist\R3E-Setup-Coach-Setup.exe' -Force; (Get-FileHash 'dist\R3E-Setup-Coach-Setup.exe' -Algorithm SHA256).Hash | Out-File 'dist\SHA256-Setup.txt' -Encoding ascii"
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/R3E-Setup-Coach-win.zip
             dist/R3E-Setup-Coach/SHA256.txt
-            dist-installer/R3E-Setup-Coach-Setup.exe
-            dist-installer/SHA256-Setup.txt
+            dist/R3E-Setup-Coach-Setup.exe
+            dist/SHA256-Setup.txt
