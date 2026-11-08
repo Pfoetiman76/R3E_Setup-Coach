@@ -15,11 +15,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install .[exe]
-      - run: pyinstaller --onedir --windowed --noupx --name "R3E-Setup-Coach" r3e-coach-gui.py
+      - run: pyinstaller --onedir --windowed --noupx --add-data ".r3e-coach.json;." --name "R3E-Setup-Coach" r3e-coach-gui.py
       - run: powershell "(Get-FileHash dist\R3E-Setup-Coach\R3E-Setup-Coach.exe -Algorithm SHA256).Hash | Out-File dist\R3E-Setup-Coach\SHA256.txt -Encoding ascii"
       - run: powershell "Compress-Archive -Path dist\R3E-Setup-Coach\* -DestinationPath dist\R3E-Setup-Coach-win.zip -Force"
+      - run: choco install innosetup -y
+      - run: powershell "$v = python -c \"import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])\"; iscc installer\setup.iss /DMyAppVersion=$v"
+      - run: powershell "(Get-FileHash dist-installer\R3E-Setup-Coach-Setup.exe -Algorithm SHA256).Hash | Out-File dist-installer\SHA256-Setup.txt -Encoding ascii"
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/R3E-Setup-Coach-win.zip
             dist/R3E-Setup-Coach/SHA256.txt
+            dist-installer/R3E-Setup-Coach-Setup.exe
+            dist-installer/SHA256-Setup.txt

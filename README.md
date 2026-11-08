@@ -49,6 +49,16 @@ Ergebnis: `dist\R3E-Setup-Coach\R3E-Setup-Coach.exe` (Fenstermodus; `onedir`-Bui
 
 Der Workflow `.github/workflows/build-exe.yml` baut die App auf einem `windows-latest`-Runner — bei jedem Push/PR auf `main` und manuell über **Actions → build-exe → Run workflow**. Download: im fertigen Run unter **Artifacts** (`R3E-Setup-Coach-windows` → kompletter Ordner `R3E-Setup-Coach\` inkl. `R3E-Setup-Coach.exe` und `SHA256.txt`).
 
+### Installer (fest installiert auf dem PC)
+
+Neben dem zip gibt es pro Release einen **Windows-Installer** (`R3E-Setup-Coach-Setup.exe`, gebaut mit Inno Setup im `release.yml`-Workflow, Skript: `installer/setup.iss`):
+
+- installiert nach `%LOCALAPPDATA%\R3E-Setup-Coach` (pro Benutzer, keine Admin-Rechte nötig — das Auto-Update darf später selbst schreiben)
+- Startmenü- und optional Desktop-Verknüpfung, Deinstallations-Eintrag in den Windows-Einstellungen
+- `.r3e-coach.json` wird mit in die App gepackt und liegt nach der Installation neben der Exe (Pfad bei Bedarf anpassen)
+
+Lokal bauen: `scripts\build_exe.bat` (App) + Inno Setup lokal mit `iscc installer\setup.iss`.
+
 ### Releases & automatisches Update (wie bei PitBoss)
 
 - Gepushter Tag `v*.*.*` (z. B. `git tag v0.2.0 && git push origin v0.2.0`) triggert `.github/workflows/release.yml`: baut die Exe auf `windows-latest` und veröffentlicht ein **GitHub-Release** mit `R3E-Setup-Coach-win.zip` + `SHA256.txt`
