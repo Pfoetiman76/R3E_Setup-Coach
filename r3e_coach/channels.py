@@ -10,10 +10,10 @@ def normalize(name):
 BASE_PATTERNS = {
     "time": [r"^time$", r"^sessiontime$", r"^racetime$", r"^elapsedtime$"],
     "lap_time": [r"^laptime$", r"^lastlaptime$", r"^prevlaptime$"],
-    "speed": [r"^speed$", r"^gpsspeed$", r"^vehiclespeed$", r"^carspeed$", r"^velocity$"],
+    "speed": [r"^speed$", r"^gpsspeed$", r"^vehiclespeed$", r"^carspeed$", r"^velocity$", r"^drivespeed$"],
     "throttle": [r"^throttle$", r"^throttlepos(?:ition)?$", r"^accelerator(?:pos)?$", r"^apps$"],
     "brake": [r"^brake$", r"^brakepress(?:ure)?$", r"^brakepos(?:ition)?$"],
-    "steer": [r"^steeringangle$", r"^steerangle$", r"^steer$", r"^steering$", r"^handwheelangle$"],
+    "steer": [r"^steeringangle$", r"^steerangle$", r"^steer$", r"^steering$", r"^handwheelangle$", r"^steeredangle$"],
     "g_lat": [
         r"^glat$", r"^latg$", r"^gforcelat$", r"^gforcey$",
         r"^latacc(?:el(?:eration)?)?$", r"^lateralacc(?:el(?:eration)?)?$", r"^accellat$",
@@ -34,7 +34,8 @@ CORNER_STEMS = {
 
 def _corner_regex(stem):
     c = "|".join(CORNERS)
-    return re.compile(rf"^(?:{re.escape(stem)}({c})|(?:{c}){re.escape(stem)})([imo])?$")
+    suffix = r"(?:[imo]|inner|centre|center|outer)?"
+    return re.compile(rf"^(?:{re.escape(stem)}({c})|(?:{c}){re.escape(stem)}){suffix}$")
 
 
 CORNER_REGEXES = [(kind, [(stem, _corner_regex(stem)) for stem in stems])

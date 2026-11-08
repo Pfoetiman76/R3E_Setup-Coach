@@ -72,15 +72,22 @@ def parse_motec_csv(path):
         units = [r[1] if len(r) > 1 else "" for r in channel_rows]
         rows = data_rows or other_rows
     elif loose:
-        names = loose[0]
-        if len(loose) > 1 and not _is_number(loose[0][0] if loose[0] else "") \
-                and all(not _is_number(c) for c in loose[1] if c):
-            units = [c for c in loose[1][:len(names)]]
-            units += [""] * (len(names) - len(units))
-            rows = loose[2:]
+        header_idx = None
+        for i, cells in enumerate(loose):
+            filled = [c for c in cells if c]
+            if len(filled) >= 5 and all(not _is_number(c) for c in filled):
+                header_idx = i
+                break
+        if header_idx is None:
+            header_idx = 0
+        names = loose[header_idx]
+        rest = loose[header_idx + 1:]
+        if rest and any(c for c in rest[0]) and all(not _is_number(c) for c in rest[0] if c):
+            units = rest[0][:len(names)] + [""] * max(0, len(names) - len(rest[0]))
+            rows = rest[1:]
         else:
             units = [""] * len(names)
-            rows = loose[1:]
+            rows = rest
     else:
         names, units, rows = [], [], []
     n = len(names)
