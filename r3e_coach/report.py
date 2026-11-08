@@ -38,8 +38,12 @@ def render_text(findings, session, lang="de"):
         "-" * 60,
     ]
     if not findings:
-        lines.append({"de": "Keine Auffälligkeiten gefunden — Setup scheint stimmig.",
-                      "en": "No issues found — setup looks consistent."}[lang])
+        if len(session) == 0:
+            lines.append({"de": "Keine Daten gefunden (0 Samples) — Datei evtl. UTF-16/falsches Format? Kopfzeile prüfen.",
+                          "en": "No data found (0 samples) — file maybe UTF-16/wrong format? Check the header row."}[lang])
+        else:
+            lines.append({"de": "Keine Auffälligkeiten gefunden — Setup scheint stimmig.",
+                          "en": "No issues found — setup looks consistent."}[lang])
         return "\n".join(lines)
     for sev in SEVERITY_ORDER:
         group = [f for f in findings if f.severity == sev]

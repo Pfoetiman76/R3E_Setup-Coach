@@ -60,3 +60,28 @@ def test_semicolon_delimited_csv(tmp_path):
     assert s.has("tyre_temp_fl")
     assert s.col("speed") == [150.0, 160.0]
     assert len(s) == 2
+
+
+def test_utf16_encoded_csv(tmp_path):
+    f = tmp_path / "motec_utf16.csv"
+    f.write_bytes("Time,Speed\n0,100\n1,120\n".encode("utf-16"))
+    s = parse_motec_csv(str(f))
+    assert s.has("speed")
+    assert s.col("speed") == [100.0, 120.0]
+
+
+def test_header_plus_units_row(tmp_path):
+    f = tmp_path / "units.csv"
+    f.write_text('"Time","Speed"\n"sec","km/h"\n0,100\n1,120\n', encoding="utf-8")
+    s = parse_motec_csv(str(f))
+    assert s.has("speed")
+    assert s.col("speed") == [100.0, 120.0]
+    assert s.units["speed"] == "km/h"
+
+
+def test_unknown_data_section_used_as_fallback(tmp_path):
+    f = tmp_path / "odd.csv"
+    f.write_text('[Channel]\n"Time","sec"\n"Speed","km/h"\n[DataLogged]\n0,100\n1,120\n', encoding="utf-8")
+    s = parse_motec_csv(str(f))
+    assert s.has("speed")
+    assert len(s) == 2

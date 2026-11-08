@@ -23,12 +23,28 @@ def _to_float(value):
         return None
 
 
+def _read_text(path):
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        return raw.decode("utf-16")
+    return raw.decode("utf-8-sig", errors="replace")
+
+
+def _is_number(text):
+    try:
+        float(text)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def parse_motec_csv(path):
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
-        lines = fh.read().splitlines()
+    lines = _read_text(path).splitlines()
     section = None
     channel_rows = []
     data_rows = []
+    other_rows = []
     loose = []
     for raw in lines:
         line = raw.strip()
@@ -47,16 +63,24 @@ def parse_motec_csv(path):
             data_rows.append(cells)
         elif section is None:
             loose.append(cells)
+        else:
+            other_rows.append(cells)
     if channel_rows and normalize(channel_rows[0][0] if channel_rows[0] else "") == "name":
         channel_rows = channel_rows[1:]
     if channel_rows:
         names = [r[0] if r else "" for r in channel_rows]
         units = [r[1] if len(r) > 1 else "" for r in channel_rows]
-        rows = data_rows
+        rows = data_rows or other_rows
     elif loose:
         names = loose[0]
-        units = [""] * len(names)
-        rows = loose[1:]
+        if len(loose) > 1 and not _is_number(loose[0][0] if loose[0] else "") \
+                and all(not _is_number(c) for c in loose[1] if c):
+            units = [c for c in loose[1][:len(names)]]
+            units += [""] * (len(names) - len(units))
+            rows = loose[2:]
+        else:
+            units = [""] * len(names)
+            rows = loose[1:]
     else:
         names, units, rows = [], [], []
     n = len(names)
