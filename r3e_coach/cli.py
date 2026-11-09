@@ -4,8 +4,9 @@ import sys
 
 from .bridge import BridgeError, find_config, load_config, resolve_args, resolve_exe, run_bridge
 from .parser import parse_motec_csv
-from .report import render_json, render_text
+from .report import finding_dicts, render_json, render_text
 from .rules import Ctx, analyze
+from .store import add_analysis, default_store_path, entry_key, list_keys, load, save
 
 
 def _add_common(p):
@@ -13,10 +14,17 @@ def _add_common(p):
     p.add_argument("--lang", choices=["de", "en"], default="de", help="Ausgabesprache (Standard: de)")
 
 
+def _add_store_args(p):
+    p.add_argument("--store", help="Pfad zur setups.json (Standard: Anwendungsordner)")
+    p.add_argument("--track", help="Streckenname (unverändert aus RaceRoom-Ergebnisdaten)")
+    p.add_argument("--layout", help="Layout-Name (Standard: wie Strecke, falls RaceRoom kein eigenes Layout nennt)")
+    p.add_argument("--vehicle", help="Fahrzeugname (unverändert aus RaceRoom-Ergebnisdaten)")
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="r3e-coach",
-        description="R3E Setup-Coach: MoTeC-i2-CSV analysieren und/oder Bridge-Exe (RaceRoom → MoTeC) verwalten.",
+        description="R3E Setup-Coach: MoTeC-i2-CSV analysieren, Setups verwalten und/oder Bridge-Exe (RaceRoom → MoTeC) steuern.",
     )
     sub = p.add_subparsers(dest="command")
 
@@ -26,15 +34,24 @@ def build_parser():
     a.add_argument("--min-speed", type=float, default=40.0,
                    help="Mindestgeschwindigkeit in km/h für relevante Fahrmanöver (Standard: 40)")
     a.add_argument("--json", action="store_true", help="Ausgabe als JSON statt Text")
+    _add_store_args(a)
+    a.add_argument("--save", action="store_true",
+                   help="Analyse unter 'track|layout|vehicle' in setups.json speichern (erfordert --track und --vehicle)")
+
+    s = sub.add_parser("setups", help="Gespeicherte Setups auflisten (setups.json)")
+    _add_common(s)
+    _add_store_args(s)
+    s.add_argument("--key", help="Nur diesen Eintrag zeigen (Format 'track|layout|vehicle')")
+    s.add_argument("--json", action="store_true", help="Ausgabe als JSON statt Text")
 
     b = sub.add_parser("bridge", help="Bridge-Exe starten, das RaceRoom-Daten an MoTeC liefert, und per Strg+C stoppen")
     _add_common(b)
-    b.add_argument("--exe", help="Pfad zum Bridge-Exe (oder \"bridge_exe\" in der Config)")
+    b.add_argument("--exe", help="Pfad zur Bridge-Exe (oder \"bridge_exe\" in der Config)")
     b.add_argument("--cwd", help="Arbeitsverzeichnis für die Bridge (oder \"bridge_cwd\" in der Config)")
     b.add_argument("--args", nargs=argparse.REMAINDER,
                    help="Argumente für die Bridge, z. B. --args -- --port 5566")
 
-    g = sub.add_parser("gui", help="Grafische Oberfläche starten (tkinter)")
+    g = sub.add_parser("gui", help="Grafische Oberfläche starten (PySide6)")
     _add_common(g)
 
     u = sub.add_parser("update", help="Auf neues GitHub-Release prüfen und herunterladen")
@@ -50,7 +67,82 @@ def _run_analyze(args):
         print(render_json(findings, session, lang=args.lang))
     else:
         print(render_text(findings, session, lang=args.lang))
+    if args.save:
+        if not args.track or not args.vehicle:
+            print("Fehler: --save erfordert --track und --vehicle (und optional --layout).", file=sys.stderr)
+            return 2
+        key = entry_key(args.track, args.layout, args.vehicle)
+        store_path = args.store or default_store_path()
+        data = load(store_path)
+        record = add_analysis(data, key, {
+            "csv_source": os.path.abspath(args.csv),
+            "samples": len(session),
+            "findings": finding_dicts(findings),
+        })
+        save(data, store_path)
+        print(f"Gespeichert unter '{key}' ({len(record['findings'])} Fundstellen) → {store_path}")
     return 0
+
+
+def _run_setups(args):
+    store_path = args.store or default_store_path()
+    data = load(store_path)
+    keys = list_keys(data)
+    if args.key:
+        if args.key not in data["setups"]:
+            print(f"Fehler: Kein Eintrag '{args.key}' in {store_path}", file=sys.stderr)
+            return 2
+        if args.json:
+            import json
+            print(json.dumps({args.key: data["setups"][args.key]}, ensure_ascii=False, indent=2))
+        else:
+            _print_entry(args.key, data["setups"][args.key], store_path)
+        return 0
+    if args.json:
+        import json
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    if not keys:
+        print(f"Noch keine Setups gespeichert ({store_path}).")
+        return 0
+    print(f"Gespeicherte Setups ({len(keys)}) — {store_path}:")
+    for key in keys:
+        entry = data["setups"][key]
+        target = entry.get("target_lap_ms")
+        target_s = f"{target / 1000:.3f} s" if isinstance(target, (int, float)) else "—"
+        updated = entry.get("updated_at") or "—"
+        analyses = len(entry.get("analyses", []))
+        print(f"  {key} · Ziel {target_s} · Analysen {analyses} · aktualisiert {updated}")
+    return 0
+
+
+def _print_entry(key, entry, store_path):
+    target = entry.get("target_lap_ms")
+    target_s = f"{target / 1000:.3f} s" if isinstance(target, (int, float)) else "—"
+    print(f"Setup '{key}' — {store_path}")
+    print(f"  Zielzeit: {target_s}")
+    if entry.get("reference_session"):
+        print(f"  Bezugs-Session: {entry['reference_session']}")
+    if entry.get("notes"):
+        print(f"  Notizen: {entry['notes']}")
+    chassis = entry.get("chassis") or {}
+    tires = entry.get("tires") or {}
+    vals = ", ".join(f"{k}={v}" for k, v in chassis.items() if v is not None)
+    if vals:
+        print(f"  Fahrwerk: {vals}")
+    vals = ", ".join(f"{k}={v}" for k, v in tires.items() if v is not None)
+    if vals:
+        print(f"  Reifen: {vals}")
+    for i, a in enumerate(entry.get("analyses", []), 1):
+        stamp = a.get("analyzed_at") or "?"
+        applied = a.get("applied")
+        state = {True: "umgesetzt", False: "verworfen", None: "offen"}[applied]
+        print(f"  Analyse {i} ({stamp}, {a.get('samples', '?')} Samples, {state}): {a.get('csv_source', '?')}")
+        for f in a.get("findings", []):
+            print(f"    [{f.get('severity', '?').upper()}] {f.get('text', '')}")
+    for h in entry.get("history", []):
+        print(f"  Historie {h.get('changed_at')}: {h.get('change', '')}"
+              + (f" — {h['observed']}" if h.get("observed") else ""))
 
 
 def _run_bridge(args):
@@ -68,13 +160,15 @@ def _run_bridge(args):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("analyze", "bridge", "gui", "update"):
+    if argv and argv[0] in ("analyze", "setups", "bridge", "gui", "update"):
         args = build_parser().parse_args(argv)
     else:
         args = build_parser().parse_args(["analyze", *argv])
     try:
         if args.command == "bridge":
             return _run_bridge(args)
+        if args.command == "setups":
+            return _run_setups(args)
         if args.command == "gui":
             from .gui import main_gui
             main_gui(lang=args.lang)

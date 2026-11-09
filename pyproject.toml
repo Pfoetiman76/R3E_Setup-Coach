@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "r3e-setup-coach"
-version = "0.2.2"
+version = "0.5.0"
 description = "Analysiert MoTeC-i2-Telemetrie (CSV) und gibt Setup-Empfehlungen für RaceRoom (R3E)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-dependencies = []
+dependencies = ["PySide6>=6.6"]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]

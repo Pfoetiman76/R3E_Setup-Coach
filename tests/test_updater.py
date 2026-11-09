@@ -82,7 +82,10 @@ def test_apply_pending_update_noop_without_pending(tmp_path):
     assert exe.read_bytes() == b"old"
 
 
-def test_run_update_check_only_offline(capsys):
+def test_run_update_check_only_offline(monkeypatch, capsys):
+    def boom(req, timeout=10):
+        raise OSError("offline")
+    monkeypatch.setattr(updater.urllib.request, "urlopen", boom)
     rc = run_update(lang="de", check_only=True)
     assert rc == 0
     out = capsys.readouterr().out

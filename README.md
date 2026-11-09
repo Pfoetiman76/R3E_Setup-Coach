@@ -2,7 +2,7 @@
 
 Analysiert **MoTeC-i2-Telemetrie (CSV-Export)** und leitet daraus **Setup-Empfehlungen für RaceRoom (R3E)** ab — z. B. zu Aero, Reifendruck, Bremsbalance, Fahrwerk und Fahrverhalten.
 
-Reine Python-Standardbibliothek, keine externen Abhängigkeiten.
+GUI-Abhängigkeit PySide6; Parser, Regelwerk und CLI kommen mit reiner Python-Standardbibliothek aus.
 
 ## Schnellstart
 
@@ -29,13 +29,31 @@ r3e-coach mein-log.csv
 
 ## GUI und Windows-Exe
 
-Grafische Oberfläche (tkinter, keine Zusatzabhängigkeiten):
+Grafische Oberfläche (PySide6, dunkles Design im Stil von PitBoss R3E / R3E-Resultate):
 
 ```bash
 r3e-coach gui          # oder: python r3e-coach-gui.py
 ```
 
-Die Oberfläche hat zwei Bereiche: **Bridge starten/stoppen** (Exe-Pfad ist aus `.r3e-coach.json` vorbefüllt) und **Telemetrie analysieren** (CSV per Dialog wählen, Bericht erscheint im Fenster).
+Die Oberfläche hat drei Bereiche: **1) Bridge** (Exe-Pfad ist aus `.r3e-coach.json` vorbefüllt), **2) Telemetrie analysieren** (CSV per Dialog wählen, Bericht erscheint im Fenster; mit Strecke/Layout/Fahrzeug und „Analysieren und speichern" landet die Analyse in der Setup-Sammlung) und **3) Setups** (gespeicherte Setups mit Zielzeit und Detailansicht, Doppelklick öffnet den Eintrag, Zielzeit und Notizen sind dort editierbar).
+
+## Setups verwalten (setups.json, R3E-Datenkonzept)
+
+Der Coach ist Eigentümer von `setups.json` im Anwendungsordner (bei der Installation `%LOCALAPPDATA%\R3E-Setup-Coach\setups.json`). Primärschlüssel ist `track|layout|vehicle`; gespeichert werden Fundstellen der Analysen (immer Deutsch), Zielzeit, Notizen und eine Änderungshistorie. Schema-Version 1, atomar geschrieben, rückwärtskompatibel (unbekannte Felder bleiben beim Lesen erhalten).
+
+```bash
+# Analyse einer CSV unter einer Kombination speichern
+r3e-coach analyze log.csv --track "Sachsenring" --vehicle "Audi R8 LMS Ultra 2016" --save
+# Layout explizit (Standard: wie die Strecke)
+r3e-coach analyze log.csv --track "Nordschleife" --layout "GP-Strecke" --vehicle "Audi R8" --save
+
+# Setup-Sammlung auflisten bzw. einen Eintrag im Detail zeigen
+r3e-coach setups
+r3e-coach setups --key "Sachsenring|Sachsenring|Audi R8 LMS Ultra 2016"
+r3e-coach setups --json
+```
+
+Strecken- und Fahrzeugnamen unverändert aus den RaceRoom-Ergebnisdaten übernehmen (keine eigenen Schreibvarianten), damit die Schlüssel über alle Apps matchen. Spätere Versionen lesen zusätzlich Bestzeiten aus `results.db` von R3E-Resultate (nur lesend) und den Verbrauch aus `fuel_history.json`.
 
 Als `.exe` bauen (auf dem Windows-PC einmalig ausführen):
 

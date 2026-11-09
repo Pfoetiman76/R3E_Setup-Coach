@@ -7,10 +7,10 @@ from r3e_coach.cli import build_parser
 
 def _gui():
     try:
-        import tkinter  # noqa: F401
+        import PySide6  # noqa: F401
         import r3e_coach.gui
     except ImportError as exc:
-        pytest.skip(f"tkinter nicht verfügbar: {exc}")
+        pytest.skip(f"PySide6 nicht verfügbar: {exc}")
     return r3e_coach.gui
 
 
@@ -20,13 +20,22 @@ def test_gui_subcommand_parses():
     assert args.lang == "en"
 
 
-def test_gui_module_importable():
+def test_gui_labels_complete():
     gui = _gui()
     for lang in ("de", "en"):
-        for key in ("update_btn", "update_downloading", "update_restart", "update_nextstart", "update_error"):
-            assert key in gui.LABELS[lang]
-    assert hasattr(gui.CoachGui, "install_update")
-    assert hasattr(gui.CoachGui, "_on_update_done")
+        for key in ("title", "tab_bridge", "tab_analyze", "tab_setups",
+                    "update_btn", "update_downloading", "update_restart",
+                    "update_nextstart", "update_error", "saved",
+                    "col_key", "col_target", "col_updated"):
+            assert key in gui.LABELS[lang], f"{lang}.{key}"
+
+
+def test_gui_class_api():
+    gui = _gui()
+    for attr in ("install_update", "_on_update_done", "start_bridge", "stop_bridge",
+                 "browse_csv", "run_analyze", "run_analyze_save",
+                 "reload_setups", "apply_setup_values"):
+        assert hasattr(gui.CoachGui, attr)
 
 
 def test_load_gui_config(tmp_path, monkeypatch):

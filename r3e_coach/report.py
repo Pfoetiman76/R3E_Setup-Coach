@@ -60,20 +60,30 @@ def render_text(findings, session, lang="de"):
     return "\n".join(lines).rstrip()
 
 
+def finding_dicts(findings, lang="de"):
+    """Fundstellen als maschinenlesbare Liste (Struktur der setups.json).
+
+    Für die Persistenz wird immer Deutsch gespeichert (lang="de" ist
+    bewusster Standard des Datenkonzepts); die Anzeigesprache bleibt
+    reine Ausgabesache.
+    """
+    return [
+        {
+            "rule": f.rule,
+            "category": f.category,
+            "severity": f.severity,
+            "text": _localized(f.text, lang),
+            "actions": [_localized(a, lang) for a in f.actions],
+        }
+        for f in findings
+    ]
+
+
 def render_json(findings, session, lang="de"):
     payload = {
         "source": session.source,
         "samples": len(session),
         "language": lang,
-        "findings": [
-            {
-                "rule": f.rule,
-                "category": f.category,
-                "severity": f.severity,
-                "text": _localized(f.text, lang),
-                "actions": [_localized(a, lang) for a in f.actions],
-            }
-            for f in findings
-        ],
+        "findings": finding_dicts(findings, lang),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
