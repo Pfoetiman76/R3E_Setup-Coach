@@ -51,3 +51,24 @@ def test_load_gui_config_empty_without_file(tmp_path, monkeypatch):
     gui = _gui()
     monkeypatch.chdir(tmp_path)
     assert gui.load_gui_config(None) == {}
+
+
+def test_gui_qt_names_imported():
+    """Regressionstest (laeuft ohne PySide6): Jeder in gui.py verwendete
+    Q*-Name muss importiert sein — Vorfall 'QPlainTextEdit is not defined'
+    in 0.5.0."""
+    import ast
+    import re
+    path = __import__("os").path.join(
+        __import__("os").path.dirname(__import__("os").path.dirname(
+            __import__("os").path.abspath(__file__))), "r3e_coach", "gui.py")
+    tree = ast.parse(open(path, encoding="utf-8").read())
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                imported.add((a.asname or a.name).split(".")[-1])
+    used = {n.id for n in ast.walk(tree)
+            if isinstance(n, ast.Name) and re.match(r"^Q[A-Z]", n.id)}
+    missing = used - imported
+    assert not missing, f"In gui.py fehlende Qt-Importe: {sorted(missing)}"

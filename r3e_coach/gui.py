@@ -5,8 +5,9 @@ import threading
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMainWindow, QPushButton, QTableWidget,
-                               QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
+                               QMainWindow, QPlainTextEdit, QPushButton,
+                               QTableWidget, QTableWidgetItem, QTabWidget,
+                               QVBoxLayout, QWidget)
 
 from .bridge import (BridgeError, BridgeProcess, find_config, load_config, resolve_args,
                      resolve_exe)
