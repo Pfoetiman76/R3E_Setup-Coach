@@ -77,7 +77,6 @@ def empty_data():
 
 def load(path=None):
     """setups.json laden — toleriert fehlende und korrupte Dateien."""
-    path = path or default_store_path()
     path = os.fspath(path or default_store_path())
     try:
         with open(path, "r", encoding="utf-8") as fh:
