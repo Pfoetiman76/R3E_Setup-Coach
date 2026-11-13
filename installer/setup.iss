@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.5.1"
 #endif
 #define MyAppName "R3E Setup-Coach"
 #define MyAppPublisher "Pfoetiman76"
@@ -21,6 +21,7 @@ OutputBaseFilename=R3E-Setup-Coach-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\app.ico
 UninstallDisplayIcon={app}\R3E-Setup-Coach.exe
 
 [Languages]
