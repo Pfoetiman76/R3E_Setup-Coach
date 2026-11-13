@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
                                QTableWidget, QTableWidgetItem, QTabWidget,
                                QVBoxLayout, QWidget)
 
-from .bridge import (BridgeError, BridgeProcess, find_config, load_config, resolve_args,
-                     resolve_exe)
+from .bridge import (BridgeError, BridgeProcess, default_config_path, find_config,
+                     load_config, resolve_args, resolve_exe, save_config)
 from . import __version__
 from .parser import parse_motec_csv
 from .queries import connect as db_connect, lap_stats
@@ -157,8 +157,9 @@ class _UpdateSignals(QObject):
 
 
 def load_gui_config(config_path=None):
+    """Liefert (Config-Daten, Config-Pfad) — Pfad None, wenn keine gefunden."""
     path = find_config(config_path)
-    return load_config(path) if path else {}
+    return (load_config(path) if path else {}), path
 
 
 class CoachGui(QMainWindow):
@@ -170,7 +171,7 @@ class CoachGui(QMainWindow):
         self.bridge_poll = QTimer(self)
         self.bridge_poll.setInterval(500)
         self.bridge_poll.timeout.connect(self._poll_bridge)
-        self.config = load_gui_config()
+        self.config, self._config_path = load_gui_config()
         self.update_info = None
         self._update_signals = _UpdateSignals()
         self._update_signals.done.connect(self._on_update_done)
@@ -294,6 +295,26 @@ class CoachGui(QMainWindow):
     def _set_status(self, key, **kwargs):
         self.status_label.setText(self.t[key].format(**kwargs) if kwargs else self.t[key])
 
+    def _persist_bridge_exe(self, exe):
+        """Merkt sich die eingegebene Bridge-Exe dauerhaft in der Config.
+
+        Speichern ist Komfort: schlägt es fehl, läuft die App ohne Meldung weiter.
+        """
+        if not exe or exe == self.config.get("bridge_exe"):
+            return
+        try:
+            path = self._config_path or default_config_path()
+            try:
+                data = load_config(path)
+            except (OSError, BridgeError):
+                data = {}
+            data["bridge_exe"] = exe
+            save_config(path, data)
+            self.config = data
+            self._config_path = path
+        except Exception:
+            pass
+
     def start_bridge(self):
         try:
             exe = resolve_exe(self.exe_edit.text().strip() or None, self.config)
@@ -304,6 +325,7 @@ class CoachGui(QMainWindow):
             return
         self.bridge = BridgeProcess(exe, args, cwd=cwd)
         self.bridge.start()
+        self._persist_bridge_exe(self.exe_edit.text().strip())
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self._set_status("running", pid=self.bridge.proc.pid)
