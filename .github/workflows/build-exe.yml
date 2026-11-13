@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
       - run: pip install .[exe]
       - run: python tools/gen_icon.py
-      - run: pyinstaller --onedir --windowed --noupx --icon assets/app.ico --add-data ".r3e-coach.json;." --add-data "assets/app.ico;." --name "R3E-Setup-Coach" r3e-coach-gui.py
+      - run: pyinstaller --onedir --windowed --noupx --icon assets/app.ico --add-data ".r3e-coach.json;." --add-data "assets/app.ico;." --add-data "assets/app.png;." --name "R3E-Setup-Coach" r3e-coach-gui.py
       - run: powershell "(Get-FileHash dist\R3E-Setup-Coach\R3E-Setup-Coach.exe -Algorithm SHA256).Hash | Out-File dist\R3E-Setup-Coach\SHA256.txt -Encoding ascii"
       - uses: actions/upload-artifact@v4
         with:

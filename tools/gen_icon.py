@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""Erzeugt das App-Icon (assets/app.ico) und ein PNG (assets/logo-512.png)
-aus der freigegebenen Logo-Geometrie — pure Standardbibliothek, keine Abhaengigkeiten.
+"""Erzeugt das App-Icon (assets/app.ico), ein PNG (assets/app.png, 256 px,
+als Fenster-Icon für die GUI) und ein PNG (assets/logo-512.png) aus der
+freigegebenen Logo-Geometrie — pure Standardbibliothek, keine Abhaengigkeiten.
+
+Hintergrund app.png: Das ICO enthält PNG-komprimierte Einträge (Windows
+akzeptiert das für Exe/Verknüpfung), aber Qt kann PNG-Einträge in ICO-Dateien
+nicht lesen — das Fenster-/Taskleisten-Icon lädt daher die PNG-Datei.
 
 Geometrie (512er Grundflaeche, final freigegeben von Marcel, 12.11.2026):
 - dunkler Grund #1c1c1e, abgerundete Ecken, dezenter Rand
@@ -148,7 +153,9 @@ def main():
     ap.add_argument("--out", default="assets", help="Zielordner (Default: assets)")
     ap.add_argument("--sizes", default="16,24,32,48,64,128,256",
                     help="ICO-Groessen, Komma-separiert")
-    ap.add_argument("--png", type=int, default=512, help="PNG-Groesse (0 = kein PNG)")
+    ap.add_argument("--png", type=int, default=512, help="Logo-PNG-Groesse (0 = kein Logo-PNG)")
+    ap.add_argument("--app-png", type=int, default=256,
+                    help="Fenster-Icon-PNG-Groesse (0 = kein app.png)")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -157,6 +164,11 @@ def main():
     with open(ico_path, "wb") as f:
         f.write(render_ico(sizes))
     print(f"geschrieben: {ico_path} ({len(sizes)} Groessen)")
+    if args.app_png:
+        app_png_path = os.path.join(args.out, "app.png")
+        with open(app_png_path, "wb") as f:
+            f.write(render_png(args.app_png))
+        print(f"geschrieben: {app_png_path} ({args.app_png}x{args.app_png})")
     if args.png:
         png_path = os.path.join(args.out, "logo-%d.png" % args.png)
         with open(png_path, "wb") as f:
