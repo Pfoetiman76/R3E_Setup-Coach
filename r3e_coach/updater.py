@@ -104,27 +104,41 @@ PROTECTED_FILES = (".r3e-coach.json", "setups.json")
 def build_swap_cmd(app_dir, staging, exe_name="R3E-Setup-Coach.exe"):
     """Erzeugt den Batch-Inhalt, der nach App-Ende den Ordner tauscht.
 
-    Der Batch wartet (ren-Schleife), bis die laufende Exe freigegeben ist,
+    Der Batch beseitigt zuerst Altlasten (`.old` aus einem abgebrochenen
+    früheren Versuch — sonst hängt die ren-Schleife für immer), wartet dann
+    mit Obergrenze (120 Sekunden), bis die laufende Exe freigegeben ist,
     kopiert die neuen Dateien über den App-Ordner (ohne zu löschen,
-    geschützte Nutzer- und Hilfsdateien ausgenommen), startet die neue
-    Version und räumt auf.
+    geschützte Nutzer- und Hilfsdateien ausgenommen), stellt die alte Exe
+    im Fehlerfall zurück, startet die neue Version und räumt auf.
     """
     excl = os.path.join(staging, ".update-exclude")
     with open(excl, "w", encoding="ascii", newline="\r\n") as fh:
         for name in PROTECTED_FILES + (".update-exclude",):
             fh.write(name + "\r\n")
+    old = os.path.join(app_dir, exe_name + ".old")
     return (
         "@echo off\r\n"
-        f":wait\r\n"
-        f"ren \"{app_dir}\\{exe_name}\" \"{exe_name}.old\" >nul 2>&1\r\n"
+        f'del "{old}" >nul 2>&1\r\n'
+        "set /a tries=0\r\n"
+        ":wait\r\n"
+        "set /a tries+=1\r\n"
+        "if %tries% gtr 120 goto abort\r\n"
+        f'ren "{app_dir}\\{exe_name}" "{exe_name}.old" >nul 2>&1\r\n'
         "if errorlevel 1 (\r\n"
         "  timeout /t 1 /nobreak >nul\r\n"
         "  goto wait\r\n"
         ")\r\n"
-        f"xcopy \"{staging}\\*\" \"{app_dir}\\\" /E /Y /I /Q /EXCLUDE:{excl} >nul\r\n"
-        f"del \"{app_dir}\\{exe_name}.old\" >nul 2>&1\r\n"
-        f"start \"\" \"{app_dir}\\{exe_name}\"\r\n"
-        f"rmdir /S /Q \"{staging}\"\r\n"
+        f'xcopy "{staging}\\*" "{app_dir}\\" /E /Y /I /Q /EXCLUDE:{excl} >nul\r\n'
+        f'if not exist "{app_dir}\\{exe_name}" (\r\n'
+        f'  ren "{old}" "{exe_name}"\r\n'
+        ")\r\n"
+        f'del "{old}" >nul 2>&1\r\n'
+        f'start "" "{app_dir}\\{exe_name}"\r\n'
+        f'rmdir /S /Q "{staging}"\r\n'
+        "exit /b 0\r\n"
+        ":abort\r\n"
+        f'echo Update abgebrochen: App-Ordner unveraendert. >nul 2>&1\r\n'
+        "exit /b 1\r\n"
     )
 
 

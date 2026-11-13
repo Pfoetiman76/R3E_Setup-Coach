@@ -3,7 +3,7 @@ import sys
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
@@ -134,6 +134,18 @@ def _app_icon():
     return None
 
 
+class _UpdateSignals(QObject):
+    """Thread-sichere Rückmeldung aus dem Update-Worker-Thread an die GUI.
+
+    Qt-Regel: QTimer darf NUR im (GUI-)Hauptthread verwendet werden. Ein
+    Hintergrund-Thread meldet daher Ergebnisse über Signale — Qt liefert sie
+    automatisch im Hauptthread aus (queued connection).
+    """
+
+    done = Signal(str)    # Pfad des Tausch-Batches
+    failed = Signal(str)  # Fehlermeldung
+
+
 def load_gui_config(config_path=None):
     path = find_config(config_path)
     return load_config(path) if path else {}
@@ -150,6 +162,9 @@ class CoachGui(QMainWindow):
         self.bridge_poll.timeout.connect(self._poll_bridge)
         self.config = load_gui_config()
         self.update_info = None
+        self._update_signals = _UpdateSignals()
+        self._update_signals.done.connect(self._on_update_done)
+        self._update_signals.failed.connect(self._on_update_error)
         self.setWindowTitle(f"{self.t['title']} {__version__}")
         self.resize(880, 640)
 
@@ -446,22 +461,28 @@ class CoachGui(QMainWindow):
         if self.update_info is None:
             return
         self.update_btn.setEnabled(False)
+        self.status_label.setText(self.t["update_downloading"])
         self._show(self.t["update_downloading"])
 
         def work():
             try:
                 cmd_path = prepare_update(self.update_info)
-                QTimer.singleShot(0, lambda: self._on_update_done(cmd_path))
+                self._update_signals.done.emit(str(cmd_path))
             except Exception as exc:
-                QTimer.singleShot(
-                    0, lambda exc=exc: self._show(self.t["update_error"].format(err=exc)))
+                self._update_signals.failed.emit(str(exc))
 
         threading.Thread(target=work, daemon=True).start()
 
     def _on_update_done(self, cmd_path):
         self._show(self.t["update_restart"])
+        self.status_label.setText(self.t["update_restart"])
         _start_swap(cmd_path)
         QApplication.instance().quit()
+
+    def _on_update_error(self, err):
+        self._show(self.t["update_error"].format(err=err))
+        self.status_label.setText(self.t["update_error"].format(err=err))
+        self.update_btn.setEnabled(True)
 
 
 def main_gui(lang="de"):
