@@ -55,7 +55,21 @@ r3e-coach setups --key "Sachsenring|Sachsenring|Audi R8 LMS Ultra 2016"
 r3e-coach setups --json
 ```
 
-Strecken- und Fahrzeugnamen unverändert aus den RaceRoom-Ergebnisdaten übernehmen (keine eigenen Schreibvarianten), damit die Schlüssel über alle Apps matchen. Spätere Versionen lesen zusätzlich Bestzeiten aus `results.db` von R3E-Resultate (nur lesend) und den Verbrauch aus `fuel_history.json`.
+Strecken- und Fahrzeugnamen unverändert aus den RaceRoom-Ergebnisdaten übernehmen (keine eigenen Schreibvarianten), damit die Schlüssel über alle Apps matchen. In der Setups-Ansicht der GUI stehen Best- und Ø-Zeit je Kombination direkt neben der Zielzeit (farblich: grün = schneller als Ziel, rot = deutlich langsamer; Details per Tooltip). Spätere Versionen lesen zusätzlich den Verbrauch aus `fuel_history.json`.
+
+## Rundenzeiten aus R3E-Resultate (results.db, nur lesend)
+
+Der Coach liest Best- und Ø-Zeiten aus der Datenbank von **R3E-Resultate**: `Dokumente\RaceRoom Results Companion\results.db`. Die Datenbank wird ausschließlich im Nur-Lese-Modus geöffnet (`mode=ro`) — Eigentümerin bleibt die App R3E-Resultate. KI-Fahrer und ungültige Runden werden ausgeschlossen; fehlt die Datenbank, bleibt die Funktion ohne Fehler deaktiviert.
+
+```bash
+# Alle bekannten Strecke/Layout/Fahrzeug-Kombinationen auflisten
+r3e-coach times
+# Best- und Ø-Zeit für eine Kombination
+r3e-coach times --track "Sachsenring" --vehicle "Audi R8 LMS Ultra 2016"
+r3e-coach times --track "Nordschleife" --layout "GP-Strecke" --vehicle "Audi R8" --json
+# Anderer Datenbank-Pfad
+r3e-coach times --db "D:\Backups\results.db"
+```
 
 Als `.exe` bauen (auf dem Windows-PC einmalig ausführen):
 
@@ -82,8 +96,8 @@ Lokal bauen: `scripts\build_exe.bat` (App) + Inno Setup lokal mit `iscc installe
 ### Releases & automatisches Update (wie bei PitBoss)
 
 - Gepushter Tag `v*.*.*` (z. B. `git tag v0.2.0 && git push origin v0.2.0`) triggert `.github/workflows/release.yml`: baut die Exe auf `windows-latest` und veröffentlicht ein **GitHub-Release** mit `R3E-Setup-Coach-win.zip` + `SHA256.txt`
-- Update-Prüfung in der App: `r3e-coach update` (oder `--check` nur prüfen) vergleicht die installierte Version mit `releases/latest`, lädt ein neues Release als `.new` herunter und installiert es beim nächsten Start (alte Exe wird als `.old` gesichert)
-- Die GUI prüft beim Start automatisch, zeigt verfügbare Updates an und installiert sie per **„Update installieren"-Button** (Download im Hintergrund, sofortige Installation + Neustart der App)
+- Update-Prüfung in der App: `r3e-coach update` (oder `--check` nur prüfen) vergleicht die installierte Version mit `releases/latest`. Liegt ein neueres Release vor, wird das ZIP in einen Staging-Ordner `<App-Ordner>.update` entpackt; nach dem App-Ende übernimmt ein Tausch-Batch (`apply-update.cmd`) die neuen Dateien und startet die App neu. Geschützt und niemals überschrieben werden `.r3e-coach.json`, `setups.json` und `.update-exclude`
+- Die GUI prüft beim Start automatisch, zeigt verfügbare Updates an und installiert sie per **„Update installieren"-Button** (Download im Hintergrund, danach Neustart der App; die aktive Version steht im Fenstertitel)
 
 ## Bridge-Exe automatisch starten (RaceRoom → MoTeC)
 

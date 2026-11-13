@@ -57,6 +57,14 @@ def build_parser():
     u = sub.add_parser("update", help="Auf neues GitHub-Release prüfen und herunterladen")
     _add_common(u)
     u.add_argument("--check", action="store_true", help="Nur prüfen, nicht herunterladen")
+
+    t_ = sub.add_parser("times", help="Best-/Ø-Zeiten aus results.db von R3E-Resultate (nur lesend)")
+    _add_common(t_)
+    t_.add_argument("--db", help="Pfad zur results.db (Standard: Dokumente\\RaceRoom Results Companion\\results.db)")
+    t_.add_argument("--track", help="Streckenname (leer lassen für alle Kombinationen)")
+    t_.add_argument("--layout", help="Layout-Name (Standard: wie Strecke)")
+    t_.add_argument("--vehicle", help="Fahrzeugname")
+    t_.add_argument("--json", action="store_true", help="Ausgabe als JSON statt Text")
     return p
 
 
@@ -145,6 +153,48 @@ def _print_entry(key, entry, store_path):
               + (f" — {h['observed']}" if h.get("observed") else ""))
 
 
+def _run_times(args):
+    from .queries import combos, connect, db_exists, default_db_path, lap_stats
+    db = args.db or default_db_path()
+    if not db_exists(db):
+        print(f"Hinweis: results.db nicht gefunden ({db}) — "
+              "erst R3E-Resultate starten, damit die Datenbank entsteht.")
+        return 0
+    if not args.track and not args.vehicle:
+        with connect(db) as conn:
+            rows = combos(conn)
+        if args.json:
+            import json
+            print(json.dumps(rows, ensure_ascii=False, indent=2))
+            return 0
+        if not rows:
+            print("Noch keine Zeiten in results.db.")
+            return 0
+        print(f"Bekannte Kombinationen ({len(rows)}) — {db}:")
+        for c in rows:
+            best = f"{c['best_ms'] / 1000:.3f} s" if c.get("best_ms") else "—"
+            print(f"  {c['track']}|{c['layout']}|{c['vehicle']} · Best {best}")
+        return 0
+    if not args.track or not args.vehicle:
+        print("Fehler: --track und --vehicle zusammen angeben (oder beide weglassen).", file=sys.stderr)
+        return 2
+    layout = args.layout or args.track
+    with connect(db) as conn:
+        stats = lap_stats(conn, args.track, layout, args.vehicle)
+    if stats is None:
+        print(f"Keine Daten für '{args.track}|{layout}|{args.vehicle}'.")
+        return 0
+    if args.json:
+        import json
+        print(json.dumps(stats, ensure_ascii=False, indent=2))
+        return 0
+    best = f"{stats['best_ms'] / 1000:.3f} s" if stats["best_ms"] else "—"
+    avg = f"{stats['avg_ms'] / 1000:.3f} s" if stats["avg_ms"] else "—"
+    print(f"Zeiten für '{args.track}|{layout}|{args.vehicle}' — {db}:")
+    print(f"  Bestzeit: {best} · Ø: {avg} · Runden: {stats['n_laps']} · Sitzungen: {stats['n_sessions']}")
+    return 0
+
+
 def _run_bridge(args):
     config = {}
     cfg_path = find_config(args.config)
@@ -160,7 +210,7 @@ def _run_bridge(args):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("analyze", "setups", "bridge", "gui", "update"):
+    if argv and argv[0] in ("analyze", "setups", "bridge", "gui", "update", "times"):
         args = build_parser().parse_args(argv)
     else:
         args = build_parser().parse_args(["analyze", *argv])
@@ -176,6 +226,8 @@ def main(argv=None):
         if args.command == "update":
             from .updater import run_update
             return run_update(lang=args.lang, check_only=args.check)
+        if args.command == "times":
+            return _run_times(args)
         return _run_analyze(args)
     except BridgeError as exc:
         print(f"Fehler: {exc}", file=sys.stderr)

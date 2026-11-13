@@ -3,6 +3,7 @@ import sys
 import threading
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QPlainTextEdit, QPushButton,
@@ -11,13 +12,14 @@ from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
 
 from .bridge import (BridgeError, BridgeProcess, find_config, load_config, resolve_args,
                      resolve_exe)
+from . import __version__
 from .parser import parse_motec_csv
+from .queries import connect as db_connect, lap_stats
 from .report import finding_dicts, render_text
 from .rules import Ctx, analyze
 from .store import add_analysis, ensure_entry, list_keys, load, save, upsert_values
 from .theme import apply_theme
-from .updater import (apply_pending_update, check_for_update, current_exe_path,
-                      download_update, pending_path)
+from .updater import (_start_swap, check_for_update, prepare_update)
 
 LABELS = {
     "de": {
@@ -44,6 +46,8 @@ LABELS = {
         "apply_values": "Setup-Werte übernehmen",
         "col_key": "Strecke | Layout | Fahrzeug",
         "col_target": "Zielzeit",
+        "col_best": "Bestzeit (Resultate)",
+        "col_avg": "Ø-Zeit (Resultate)",
         "col_updated": "Aktualisiert",
         "ready": "Bereit.",
         "running": "Bridge läuft (PID {pid}) — fahren, dann stoppen.",
@@ -55,10 +59,11 @@ LABELS = {
         "values_saved": "Setup-Werte gespeichert.",
         "no_setups": "Noch keine Setups gespeichert.",
         "update_available": "Update verfügbar: {tag}",
+        "update_current": "Version {version} — aktuell",
+        "update_check_failed": "Version {version} — Update-Prüfung fehlgeschlagen",
         "update_btn": "Update installieren",
         "update_downloading": "Update wird geladen …",
         "update_restart": "Update installiert — App startet neu …",
-        "update_nextstart": "Update geladen — wird beim nächsten Start installiert.",
         "update_error": "Update fehlgeschlagen: {err}",
         "update_no_exe": "Kein Exe-Modus (aus Quelle gestartet) — Update bitte manuell ausführen.",
     },
@@ -97,10 +102,11 @@ LABELS = {
         "values_saved": "Setup values saved.",
         "no_setups": "No setups saved yet.",
         "update_available": "Update available: {tag}",
+        "update_current": "Version {version} — up to date",
+        "update_check_failed": "Version {version} — update check failed",
         "update_btn": "Install update",
         "update_downloading": "Downloading update …",
         "update_restart": "Update installed — restarting app …",
-        "update_nextstart": "Update downloaded — will be installed on next start.",
         "update_error": "Update failed: {err}",
         "update_no_exe": "Not running as exe (started from source) — please update manually.",
     },
@@ -123,7 +129,7 @@ class CoachGui(QMainWindow):
         self.bridge_poll.timeout.connect(self._poll_bridge)
         self.config = load_gui_config()
         self.update_info = None
-        self.setWindowTitle(self.t["title"])
+        self.setWindowTitle(f"{self.t['title']} {__version__}")
         self.resize(880, 640)
 
         tabs = QTabWidget()
@@ -208,12 +214,15 @@ class CoachGui(QMainWindow):
         row.addStretch(1)
         row.addWidget(refresh)
         lay.addLayout(row)
-        self.setups_table = QTableWidget(0, 3)
+        self.setups_table = QTableWidget(0, 5)
         self.setups_table.setHorizontalHeaderLabels(
-            [self.t["col_key"], self.t["col_target"], self.t["col_updated"]])
+            [self.t["col_key"], self.t["col_target"], self.t["col_best"],
+             self.t["col_avg"], self.t["col_updated"]])
         self.setups_table.horizontalHeader().setStretchLastSection(True)
-        self.setups_table.setColumnWidth(0, 460)
-        self.setups_table.setColumnWidth(1, 120)
+        self.setups_table.setColumnWidth(0, 420)
+        self.setups_table.setColumnWidth(1, 100)
+        self.setups_table.setColumnWidth(2, 130)
+        self.setups_table.setColumnWidth(3, 130)
         self.setups_table.itemDoubleClicked.connect(self._show_setup_detail)
         self.setups_table.setEditTriggers(QTableWidget.NoEditTriggers)
         lay.addWidget(self.setups_table)
@@ -328,15 +337,34 @@ class CoachGui(QMainWindow):
             self.setups_table.setItem(0, 0, item)
             return
         self.setups_table.setRowCount(len(keys))
-        for row, key in enumerate(keys):
-            entry = data["setups"][key]
-            self.setups_table.setItem(row, 0, QTableWidgetItem(key))
-            target = entry.get("target_lap_ms")
-            target_item = QTableWidgetItem(
-                f"{target / 1000:.3f} s" if isinstance(target, (int, float)) else "—")
-            target_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.setups_table.setItem(row, 1, target_item)
-            self.setups_table.setItem(row, 2, QTableWidgetItem(entry.get("updated_at") or "—"))
+        with db_connect() as conn:
+            for row, key in enumerate(keys):
+                entry = data["setups"][key]
+                self.setups_table.setItem(row, 0, QTableWidgetItem(key))
+                target = entry.get("target_lap_ms")
+                track, layout, vehicle = key.split("|", 2)
+                stats = lap_stats(conn, track, layout, vehicle)
+                best, avg = (stats or {}).get("best_ms"), (stats or {}).get("avg_ms")
+                target_item = QTableWidgetItem(
+                    f"{target / 1000:.3f} s" if isinstance(target, (int, float)) else "—")
+                target_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                if isinstance(target, (int, float)) and best:
+                    delta = target - best
+                    target_item.setToolTip(
+                        f"Delta Ziel − Best: {delta / 1000:+.3f} s")
+                    target_item.setForeground(
+                        QColor("#8fd18f") if delta < 0 else QColor("#f2a3a3")
+                        if delta > 2000 else QColor("#e6e6e8"))
+                self.setups_table.setItem(row, 1, target_item)
+                best_item = QTableWidgetItem(
+                    f"{best / 1000:.3f} s" if best else "—")
+                best_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                self.setups_table.setItem(row, 2, best_item)
+                avg_item = QTableWidgetItem(
+                    f"{avg / 1000:.3f} s" if avg else "—")
+                avg_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                self.setups_table.setItem(row, 3, avg_item)
+                self.setups_table.setItem(row, 4, QTableWidgetItem(entry.get("updated_at") or "—"))
 
     def _show_setup_detail(self, item):
         import json as _json
@@ -380,12 +408,18 @@ class CoachGui(QMainWindow):
     def _check_update(self):
         try:
             info = check_for_update()
+            failed = False
         except Exception:
             info = None
+            failed = True
         self.update_info = info
         if info is not None:
             self._show(self.t["update_available"].format(tag=info.tag))
             self.update_btn.setEnabled(True)
+        elif failed:
+            self._show(self.t["update_check_failed"].format(version=__version__))
+        else:
+            self._show(self.t["update_current"].format(version=__version__))
 
     def install_update(self):
         if self.update_info is None:
@@ -395,26 +429,18 @@ class CoachGui(QMainWindow):
 
         def work():
             try:
-                exe = current_exe_path()
-                if exe is None:
-                    QTimer.singleShot(0, lambda: self._show(self.t["update_no_exe"]))
-                    return
-                dest = pending_path(exe)
-                download_update(self.update_info.url, dest)
-                applied = apply_pending_update(exe)
-                QTimer.singleShot(0, lambda: self._on_update_done(applied, exe))
+                cmd_path = prepare_update(self.update_info)
+                QTimer.singleShot(0, lambda: self._on_update_done(cmd_path))
             except Exception as exc:
                 QTimer.singleShot(
                     0, lambda exc=exc: self._show(self.t["update_error"].format(err=exc)))
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _on_update_done(self, applied, exe):
-        if applied:
-            self._show(self.t["update_restart"])
-            QTimer.singleShot(800, lambda: os.execv(sys.executable, [sys.executable]))
-        else:
-            self._show(self.t["update_nextstart"])
+    def _on_update_done(self, cmd_path):
+        self._show(self.t["update_restart"])
+        _start_swap(cmd_path)
+        QApplication.instance().quit()
 
 
 def main_gui(lang="de"):

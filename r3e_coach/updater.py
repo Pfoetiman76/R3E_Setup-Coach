@@ -87,8 +87,73 @@ def current_exe_path():
     return None
 
 
+def app_dir():
+    """Installationsordner der App (onedir-Build) oder None."""
+    exe = current_exe_path()
+    return os.path.dirname(exe) if exe else None
+
+
 def pending_path(exe_path):
     return exe_path + ".new"
+
+
+# Dateien, die ein Update NIE überschreibt (Nutzerdaten im App-Ordner).
+PROTECTED_FILES = (".r3e-coach.json", "setups.json")
+
+
+def build_swap_cmd(app_dir, staging, exe_name="R3E-Setup-Coach.exe"):
+    """Erzeugt den Batch-Inhalt, der nach App-Ende den Ordner tauscht.
+
+    Der Batch wartet (ren-Schleife), bis die laufende Exe freigegeben ist,
+    kopiert die neuen Dateien über den App-Ordner (ohne zu löschen,
+    geschützte Nutzer- und Hilfsdateien ausgenommen), startet die neue
+    Version und räumt auf.
+    """
+    excl = os.path.join(staging, ".update-exclude")
+    with open(excl, "w", encoding="ascii", newline="\r\n") as fh:
+        for name in PROTECTED_FILES + (".update-exclude",):
+            fh.write(name + "\r\n")
+    return (
+        "@echo off\r\n"
+        f":wait\r\n"
+        f"ren \"{app_dir}\\{exe_name}\" \"{exe_name}.old\" >nul 2>&1\r\n"
+        "if errorlevel 1 (\r\n"
+        "  timeout /t 1 /nobreak >nul\r\n"
+        "  goto wait\r\n"
+        ")\r\n"
+        f"xcopy \"{staging}\\*\" \"{app_dir}\\\" /E /Y /I /Q /EXCLUDE:{excl} >nul\r\n"
+        f"del \"{app_dir}\\{exe_name}.old\" >nul 2>&1\r\n"
+        f"start \"\" \"{app_dir}\\{exe_name}\"\r\n"
+        f"rmdir /S /Q \"{staging}\"\r\n"
+    )
+
+
+def prepare_update(info, dest_dir=None, timeout=60):
+    """Lädt das Release-ZIP und stellt das Update für den Neustart bereit.
+
+    Onedir-Build: Das ZIP wird nach '<app_dir>\\..\\R3E-Setup-Coach.update'
+    entpackt; ein Batch-Skript übernimmt den Tausch nach App-Ende.
+    Rückgabe: Pfad des Batch-Skripts (ausgeführt starten + App beenden).
+    """
+    app = dest_dir or app_dir()
+    if not app:
+        raise RuntimeError("Kein App-Ordner (nicht als Exe gestartet).")
+    staging = os.path.join(os.path.dirname(os.path.abspath(app)),
+                           os.path.basename(os.path.abspath(app)) + ".update")
+    if os.path.isdir(staging):
+        import shutil
+        shutil.rmtree(staging, ignore_errors=True)
+    os.makedirs(staging, exist_ok=True)
+    zdest = os.path.join(staging, "update.zip")
+    download_update(info.url, zdest, timeout=timeout)
+    import zipfile
+    with zipfile.ZipFile(zdest) as zf:
+        zf.extractall(staging)
+    os.remove(zdest)
+    cmd_path = os.path.join(os.path.abspath(app), "apply-update.cmd")
+    with open(cmd_path, "w", encoding="ascii", newline="") as fh:
+        fh.write(build_swap_cmd(os.path.abspath(app), staging))
+    return cmd_path
 
 
 def apply_pending_update(exe_path=None):
@@ -118,18 +183,18 @@ UPDATE_MESSAGES = {
     "de": {
         "current": "Installierte Version: {version}",
         "latest": "Neueste Release: {tag}",
-        "available": "Update verfügbar: {tag} ({name}) — wird beim nächsten Start installiert.",
+        "available": "Update verfügbar: {tag} ({name})",
         "none": "Du hast bereits die neueste Version ({version}).",
-        "downloaded": "Update nach {dest} geladen. Beim nächsten Start wird es installiert.",
+        "downloaded": "Update bereitgestellt — alter Prozess beendet sich, dann wird automatisch die neue Version gestartet.",
         "applied": "Update installiert: {path}",
         "error": "Update-Prüfung fehlgeschlagen: {err}",
     },
     "en": {
         "current": "Installed version: {version}",
         "latest": "Latest release: {tag}",
-        "available": "Update available: {tag} ({name}) — will be installed on next start.",
+        "available": "Update available: {tag} ({name})",
         "none": "You already have the latest version ({version}).",
-        "downloaded": "Update downloaded to {dest}. It will be installed on next start.",
+        "downloaded": "Update prepared — once this process exits, the new version starts automatically.",
         "applied": "Update installed: {path}",
         "error": "Update check failed: {err}",
     },
@@ -154,11 +219,21 @@ def run_update(lang="de", check_only=False, out=None):
     print(_msg(lang, "available", tag=info.tag, name=info.name), file=out)
     if check_only or not exe:
         return 0
-    dest = pending_path(exe)
     try:
-        download_update(info.url, dest)
+        cmd_path = prepare_update(info)
     except Exception as exc:
         print(_msg(lang, "error", err=exc), file=out)
         return 1
-    print(_msg(lang, "downloaded", dest=dest), file=out)
+    _start_swap(cmd_path)
+    print(_msg(lang, "downloaded"), file=out)
     return 0
+
+
+def _start_swap(cmd_path):
+    """Startet das Tausch-Batch entkoppelt (Windows); es wartet bis App-Ende."""
+    if os.name != "nt":
+        return
+    import subprocess
+    DETACHED_PROCESS = 0x00000008
+    subprocess.Popen(["cmd", "/c", cmd_path], close_fds=True,
+                     creationflags=DETACHED_PROCESS)

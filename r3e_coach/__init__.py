@@ -1,4 +1,4 @@
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 from .parser import parse_motec_csv
 from .rules import Ctx, Finding, analyze
