@@ -22,7 +22,8 @@ jobs:
           Write-Host "Tag: $tag | Version im Code: $v"
           if ($tag -ne "v$v") { throw "Tag '$tag' entspricht nicht der Version '$v' im getaggten Code - falscher Stand getaggt?" }
       - run: pip install .[exe]
-      - run: pyinstaller --onedir --windowed --noupx --add-data ".r3e-coach.json;." --name "R3E-Setup-Coach" r3e-coach-gui.py
+      - run: python tools/gen_icon.py
+      - run: pyinstaller --onedir --windowed --noupx --icon assets/app.ico --add-data ".r3e-coach.json;." --add-data "assets/app.ico;." --name "R3E-Setup-Coach" r3e-coach-gui.py
       - run: powershell "(Get-FileHash dist\R3E-Setup-Coach\R3E-Setup-Coach.exe -Algorithm SHA256).Hash | Out-File dist\R3E-Setup-Coach\SHA256.txt -Encoding ascii"
       - run: powershell "Compress-Archive -Path dist\R3E-Setup-Coach\* -DestinationPath dist\R3E-Setup-Coach-win.zip -Force"
       - run: choco install innosetup -y
