@@ -1,9 +1,10 @@
 import os
 import sys
 import threading
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QPlainTextEdit, QPushButton,
@@ -113,6 +114,24 @@ LABELS = {
         "update_no_exe": "Not running as exe (started from source) — please update manually.",
     },
 }
+
+
+def _icon_candidates():
+    """Kandidaten-Pfade für app.ico: im Build im _internal-Ordner neben der Exe
+    (PyInstaller --add-data), in der Quelle im assets-Ordner des Repos."""
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        internal = Path(getattr(sys, "_MEIPASS", exe_dir / "_internal"))
+        return [internal / "app.ico", exe_dir / "app.ico", exe_dir / "_internal" / "app.ico"]
+    return [Path(__file__).resolve().parent.parent / "assets" / "app.ico"]
+
+
+def _app_icon():
+    """QIcon aus app.ico, oder None, wenn keine Icon-Datei vorhanden ist."""
+    for cand in _icon_candidates():
+        if cand.is_file():
+            return QIcon(str(cand))
+    return None
 
 
 def load_gui_config(config_path=None):
@@ -448,6 +467,9 @@ class CoachGui(QMainWindow):
 def main_gui(lang="de"):
     app = QApplication(sys.argv)
     apply_theme(app)
+    icon = _app_icon()
+    if icon is not None:
+        app.setWindowIcon(icon)
     window = CoachGui(lang=lang)
     window.show()
     window.reload_setups()
