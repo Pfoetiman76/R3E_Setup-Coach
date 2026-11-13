@@ -1,5 +1,7 @@
 # R3E Setup-Coach
 
+<p align="center"><img src="assets/logo.svg" alt="Logo R3E Setup-Coach" width="160"></p>
+
 Analysiert **MoTeC-i2-Telemetrie (CSV-Export)** und leitet daraus **Setup-Empfehlungen für RaceRoom (R3E)** ab — z. B. zu Aero, Reifendruck, Bremsbalance, Fahrwerk und Fahrverhalten.
 
 GUI-Abhängigkeit PySide6; Parser, Regelwerk und CLI kommen mit reiner Python-Standardbibliothek aus.
@@ -151,3 +153,5 @@ Die Schwellen sind **Heuristiken** aus Telemetrie-Erfahrung, keine Garantien. Co
 pip install -e .[test]
 pytest
 ```
+
+App-Icon und Logo liegen als Geometrie in `tools/gen_icon.py` (reine Standardbibliothek) und werden im Build automatisch erzeugt (`python tools/gen_icon.py` schreibt `assets/app.ico` samt PNG); das Vektor-Logo steht unter `assets/logo.svg`.
