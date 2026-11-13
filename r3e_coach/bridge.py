@@ -11,6 +11,23 @@ class BridgeError(Exception):
     pass
 
 
+def exe_config_dir():
+    """Ordner der installierten App (None wenn nicht als Exe gestartet).
+
+    Der GUI-Start über das Startmenü setzt das Arbeitsverzeichnis nicht
+    zuverlässig auf den App-Ordner — die Config liegt aber dort.
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return None
+
+
+def default_config_path():
+    """Standard-Pfad der Config: neben der Exe (Build), sonst im aktuellen Ordner."""
+    d = exe_config_dir()
+    return os.path.join(d, DEFAULT_CONFIG_NAME) if d else DEFAULT_CONFIG_NAME
+
+
 def load_config(path):
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -29,7 +46,20 @@ def find_config(explicit):
         return explicit
     if os.path.isfile(DEFAULT_CONFIG_NAME):
         return DEFAULT_CONFIG_NAME
+    d = exe_config_dir()
+    if d:
+        cand = os.path.join(d, DEFAULT_CONFIG_NAME)
+        if os.path.isfile(cand):
+            return cand
     return None
+
+
+def save_config(path, data):
+    """Schreibt die Config atomar (erst temporär, dann ersetzen)."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
 
 def resolve_exe(explicit, config):
