@@ -117,20 +117,30 @@ LABELS = {
 
 
 def _icon_candidates():
-    """Kandidaten-Pfade für app.ico: im Build im _internal-Ordner neben der Exe
-    (PyInstaller --add-data), in der Quelle im assets-Ordner des Repos."""
+    """Kandidaten-Pfade für das Fenster-Icon.
+
+    PNG bevorzugt: Qt kann die PNG-komprimierten Einträge der ICO-Datei
+    nicht lesen (Windows für Exe/Verknüpfung schon) — das Fenster- und
+    Taskleisten-Icon lädt daher assets/app.png, das ICO bleibt Fallback.
+    Im Build liegt die Datei dank --add-data im _internal-Ordner neben der
+    Exe, in der Quelle im assets-Ordner des Repos.
+    """
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).resolve().parent
         internal = Path(getattr(sys, "_MEIPASS", exe_dir / "_internal"))
-        return [internal / "app.ico", exe_dir / "app.ico", exe_dir / "_internal" / "app.ico"]
-    return [Path(__file__).resolve().parent.parent / "assets" / "app.ico"]
+        bases = [internal, exe_dir, exe_dir / "_internal"]
+    else:
+        bases = [Path(__file__).resolve().parent.parent / "assets"]
+    return [b / "app.png" for b in bases] + [b / "app.ico" for b in bases]
 
 
 def _app_icon():
-    """QIcon aus app.ico, oder None, wenn keine Icon-Datei vorhanden ist."""
+    """QIcon aus app.png/app.ico, oder None, wenn nichts Ladbares vorhanden ist."""
     for cand in _icon_candidates():
         if cand.is_file():
-            return QIcon(str(cand))
+            icon = QIcon(str(cand))
+            if not icon.isNull():
+                return icon
     return None
 
 
