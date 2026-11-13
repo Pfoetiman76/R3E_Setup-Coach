@@ -91,6 +91,8 @@ LABELS = {
         "apply_values": "Apply setup values",
         "col_key": "Track | Layout | Vehicle",
         "col_target": "Target lap",
+        "col_best": "Best lap (results)",
+        "col_avg": "Avg lap (results)",
         "col_updated": "Updated",
         "ready": "Ready.",
         "running": "Bridge running (PID {pid}) — drive, then stop.",
