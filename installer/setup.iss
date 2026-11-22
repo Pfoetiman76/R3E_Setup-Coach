@@ -40,4 +40,4 @@ Name: "{group}\{cm:UninstallProgram,R3E Setup-Coach}"; Filename: "{uninstallexe}
 Name: "{autodesktop}\R3E Setup-Coach"; Filename: "{app}\R3E-Setup-Coach.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\R3E-Setup-Coach.exe"; Description: "R3E Setup-Coach starten"; Flags: nowait postinstall skipifsilen
+Filename: "{app}\R3E-Setup-Coach.exe"; Description: "R3E Setup-Coach starten"; Flags: nowait postinstall skipifsilent
