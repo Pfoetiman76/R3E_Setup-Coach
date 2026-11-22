@@ -1,171 +1,107 @@
 # R3E Setup-Coach
 
-<p align="center"><img src="assets/logo.svg" alt="Logo R3E Setup-Coach" width="160"></p>
+Analysiert **Telemetrie aus RaceRoom (R3E)** und leitet daraus **konkrete Setup-Empfehlungen** ab — z. B. zu Aero, Reifendruck, Bremsbalance, Fahrwerk und Fahrverhalten. **Ab Version 0.8.0 vollständig eigenständig:** Der Coach zeichnet die Telemetrie selbst über die offizielle R3E-Shared-Memory-Schnittstelle auf. MoTeC i2, CSV-Exporte und die R2M-Bridge werden nicht mehr benötigt.
 
-Analysiert **MoTeC-i2-Telemetrie (CSV-Export)** und leitet daraus **Setup-Empfehlungen für RaceRoom (R3E)** ab — z. B. zu Aero, Reifendruck, Bremsbalance, Fahrwerk und Fahrverhalten.
-
-GUI-Abhängigkeit PySide6; Parser, Regelwerk und CLI kommen mit reiner Python-Standardbibliothek aus.
-
-## Schnellstart
+## Schnellstart (Quelle)
 
 ```bash
-# Telemetrie in MoTeC i2 exportieren: Datei → Export → CSV (mit Kanal-Header)
-python -m r3e_coach mein-log.csv
-python -m r3e_coach mein-log.csv --lang en          # englische Ausgabe
-python -m r3e_coach mein-log.csv --json             # maschinenlesbares JSON
-python -m r3e_coach mein-log.csv --min-speed 60     # Schwelle für Fahrmanöver anpassen
+# Telemetrie aus RaceRoom aufzeichnen (Strg+C beendet und speichert)
+python -m r3e_coach record
+
+# Beispiel-Aufzeichnung analysieren
+python -m r3e_coach examples/beispiel.coachlog
+python -m r3e_coach examples/beispiel.coachlog --lang en   # englische Ausgabe
+python -m r3e_coach examples/beispiel.coachlog --json      # maschinenlesbares JSON
 ```
 
-Beispiel-Log liegt unter `examples/beispiel_motec_i2.csv`:
+Installationspaket (Windows): Die neueste `R3E-Setup-Coach-Setup-…exe` steht unter [Releases](https://github.com/Pfoetiman76/R3E_Setup-Coach/releases). Die App aktualisiert sich über den Knopf in der Statusleiste selbstständig.
 
 ```bash
-python -m r3e_coach examples/beispiel_motec_i2.csv
+r3e-coach examples/beispiel.coachlog
+r3e-coach record --hz 25 --wait
 ```
 
-Als installierbares Paket steht außerdem der Befehl `r3e-coach` zur Verfügung:
+## Eigene Aufzeichnung statt MoTeC/R2M (ab 0.8.0)
+
+Der Coach liest die offizielle Shared-Memory-Schnittstelle von RaceRoom (`$R3E`, Strukturversion 3.6, pack(1)) direkt aus — 50 Mal pro Sekunde. Daraus entsteht eine eigene, lesbare Logdatei pro Sitzung (`.coachlog`, Textformat mit Kopfdaten). Das löst auch das bekannte R2M-Problem: **ESC ins Menü oder ein Sessionwechsel beendet eine Aufzeichnung nicht mehr abrupt**, sondern schließt die Datei sauber und beginnt bei Rückkehr auf die Strecke automatisch eine neue.
+
+- Strecke/Layout/Fahrzeug stehen automatisch im Log (auch für die Analyse und `setups.json`).
+- Zielordner standardmäßig: `Dokumente\R3E Setup-Coach\recordings`.
+- Alte R2M/MoTeC-CSV-Dateien werden nicht mehr gelesen; `bridge`-Kommando und MoTeC-Parser sind entfernt.
 
 ```bash
-pip install .
-r3e-coach mein-log.csv
+r3e-coach record --out "D:\Aufnahmen" --hz 50
 ```
 
-## GUI und Windows-Exe
-
-Grafische Oberfläche (PySide6, dunkles Design im Stil von PitBoss R3E / R3E-Resultate):
+## CLI-Übersicht
 
 ```bash
-r3e-coach gui          # oder: python r3e-coach-gui.py
-```
-
-Die Oberfläche hat drei Bereiche: **1) Bridge** (Exe-Pfad ist aus `.r3e-coach.json` vorbefüllt), **2) Telemetrie analysieren** (CSV per Dialog wählen, Bericht erscheint im Fenster; mit Strecke/Layout/Fahrzeug und „Analysieren und speichern" landet die Analyse in der Setup-Sammlung) und **3) Setups** (gespeicherte Setups mit Zielzeit und Detailansicht, Doppelklick öffnet den Eintrag, Zielzeit und Notizen sind dort editierbar).
-
-## Setups verwalten (setups.json, R3E-Datenkonzept)
-
-Der Coach ist Eigentümer von `setups.json` im Anwendungsordner (bei der Installation `%LOCALAPPDATA%\R3E-Setup-Coach\setups.json`). Primärschlüssel ist `track|layout|vehicle`; gespeichert werden Fundstellen der Analysen (immer Deutsch), Zielzeit, Notizen und eine Änderungshistorie. Schema-Version 1, atomar geschrieben, rückwärtskompatibel (unbekannte Felder bleiben beim Lesen erhalten).
-
-```bash
-# Analyse einer CSV unter einer Kombination speichern
-r3e-coach analyze log.csv --track "Sachsenring" --vehicle "Audi R8 LMS Ultra 2016" --save
-# Layout explizit (Standard: wie die Strecke)
-r3e-coach analyze log.csv --track "Nordschleife" --layout "GP-Strecke" --vehicle "Audi R8" --save
-
-# Setup-Sammlung auflisten bzw. einen Eintrag im Detail zeigen
-r3e-coach setups
+r3e-coach analyze examples/beispiel.coachlog --json
+r3e-coach analyze examples/beispiel.coachlog --save             # Strecke/Fahrzeug aus dem Log
 r3e-coach setups --key "Sachsenring|Sachsenring|Audi R8 LMS Ultra 2016"
-r3e-coach setups --json
-```
-
-Strecken- und Fahrzeugnamen unverändert aus den RaceRoom-Ergebnisdaten übernehmen (keine eigenen Schreibvarianten), damit die Schlüssel über alle Apps matchen. In der Setups-Ansicht der GUI stehen Best- und Ø-Zeit je Kombination direkt neben der Zielzeit (farblich: grün = schneller als Ziel, rot = deutlich langsamer; Details per Tooltip). Spätere Versionen lesen zusätzlich den Verbrauch aus `fuel_history.json`.
-
-## Rundenzeiten aus R3E-Resultate (results.db, nur lesend)
-
-Der Coach liest Best- und Ø-Zeiten aus der Datenbank von **R3E-Resultate**: `Dokumente\RaceRoom Results Companion\results.db`. Die Datenbank wird ausschließlich im Nur-Lese-Modus geöffnet (`mode=ro`) — Eigentümerin bleibt die App R3E-Resultate. KI-Fahrer und ungültige Runden werden ausgeschlossen; fehlt die Datenbank, bleibt die Funktion ohne Fehler deaktiviert.
-
-```bash
-# Alle bekannten Strecke/Layout/Fahrzeug-Kombinationen auflisten
-r3e-coach times
-# Best- und Ø-Zeit für eine Kombination
 r3e-coach times --track "Sachsenring" --vehicle "Audi R8 LMS Ultra 2016"
-r3e-coach times --track "Nordschleife" --layout "GP-Strecke" --vehicle "Audi R8" --json
-# Anderer Datenbank-Pfad
-r3e-coach times --db "D:\Backups\results.db"
+r3e-coach update --check
 ```
 
-Als `.exe` bauen (auf dem Windows-PC einmalig ausführen):
-
-```bat
-scripts\build_exe.bat
-```
-
-Ergebnis: `dist\R3E-Setup-Coach\R3E-Setup-Coach.exe` (Fenstermodus; `onedir`-Build ohne Temp-Entpacken — weniger AV-False-Positives als `onefile`; optional `pip install .[exe]` vorher). Die Exe liest `.r3e-coach.json` aus dem Ordner, in dem sie gestartet wird.
-
-### Exe über GitHub Actions bauen (ohne lokalen Build)
-
-Der Workflow `.github/workflows/build-exe.yml` baut die App auf einem `windows-latest`-Runner — bei jedem Push/PR auf `main` und manuell über **Actions → build-exe → Run workflow**. Download: im fertigen Run unter **Artifacts** (`R3E-Setup-Coach-windows` → kompletter Ordner `R3E-Setup-Coach\` inkl. `R3E-Setup-Coach.exe` und `SHA256.txt`).
-
-### Installer (fest installiert auf dem PC)
-
-Neben dem zip gibt es pro Release einen **Windows-Installer** (`R3E-Setup-Coach-Setup.exe`, gebaut mit Inno Setup im `release.yml`-Workflow, Skript: `installer/setup.iss`):
-
-- installiert nach `%LOCALAPPDATA%\R3E-Setup-Coach` (pro Benutzer, keine Admin-Rechte nötig — das Auto-Update darf später selbst schreiben)
-- Startmenü- und optional Desktop-Verknüpfung, Deinstallations-Eintrag in den Windows-Einstellungen
-- `.r3e-coach.json` wird mit in die App gepackt und liegt nach der Installation neben der Exe (Pfad bei Bedarf anpassen)
-
-Lokal bauen: `scripts\build_exe.bat` (App) + Inno Setup lokal mit `iscc installer\setup.iss`.
-
-### Releases & automatisches Update (wie bei PitBoss)
-
-- Gepushter Tag `v*.*.*` (z. B. `git tag v0.2.0 && git push origin v0.2.0`) triggert `.github/workflows/release.yml`: baut die Exe auf `windows-latest` und veröffentlicht ein **GitHub-Release** mit `R3E-Setup-Coach-win.zip` + `SHA256.txt`
-- Update-Prüfung in der App: `r3e-coach update` (oder `--check` nur prüfen) vergleicht die installierte Version mit `releases/latest`. Liegt ein neueres Release vor, wird das ZIP in einen Staging-Ordner `<App-Ordner>.update` entpackt; nach dem App-Ende übernimmt ein Tausch-Batch (`apply-update.cmd`) die neuen Dateien und startet die App neu. Geschützt und niemals überschrieben werden `.r3e-coach.json`, `setups.json` und `.update-exclude`
-- Die GUI prüft beim Start automatisch, zeigt verfügbare Updates an und installiert sie per **„Update installieren"-Button** (Download im Hintergrund, danach Neustart der App; die aktive Version steht im Fenstertitel)
-
-## Bridge-Exe automatisch starten (RaceRoom → MoTeC)
-
-Damit MoTeC i2 überhaupt Daten von RaceRoom bekommt, läuft üblicherweise ein kleines Bridge-Exe. Der Coach kann es starten, überwachen und per **Strg+C kontrolliert beenden**. **Ab 0.6.5 gibt es in der GUI einen Automatismus**: beendet sich die Bridge-Exe selbst (typisch bei ESC zurück ins Menü / Session-Wechsel), startet der Coach sie sofort neu — der Haken „Bridge automatisch neu starten” ist standardmäßig an. Beendet sich die Exe wiederholt innerhalb weniger Sekunden, schaltet der Coach den Neustart vorsorglich ab (kein Endlos-Neustart). Der Haken wird als `bridge_auto_restart` in der Config gespeichert; der „Bridge stoppen”-Knopf beendet wie gehabt endgültig:
+## Grafische Oberfläche
 
 ```bash
-r3e-coach bridge --exe "C:\Tools\R3E_MoTeC_Bridge.exe"
-r3e-coach bridge --exe "C:\Tools\R3E_MoTeC_Bridge.exe" --args -- --port 5566
+r3e-coach gui
 ```
 
-Damit der Pfad nicht jedes Mal eingegeben werden muss, legt eine Config an (wird automatisch aus dem aktuellen Verzeichnis geladen, wenn sie `.r3e-coach.json` heißt, sonst per `--config`):
+Die Oberfläche hat drei Bereiche: **1) Aufzeichnen** (Zielordner wählen, „Aufzeichnung starten", Status zeigt Warten/Menü/Pause/Box/Aufzeichnung; jede fertige Sitzung wird als `.coachlog` gesichert und automatisch im Reiter 2 eingetragen), **2) Telemetrie analysieren** (Log per Dialog wählen, Strecke/Layout/Fahrzeug füllen sich aus dem Log; der Bericht erscheint im Fenster, mit „Analysieren und speichern" landet die Analyse in der Setup-Sammlung) und **3) Setups** (gespeicherte Setups mit Zielzeit, Best-/Ø-Zeiten aus R3E-Resultate und Detailansicht; Doppelklick öffnet den Eintrag, Zielzeit und Notizen sind editierbar).
+
+**„Empfohlene nächste Schritte“** (ab 0.7.0): Der Bericht endet mit priorisierten, konkreten Hinweisen — z. B. „Stabi vorne: 4 → 3“ statt nur „Untersteuern“. Sind Werte des aktuellen Setups in `setups.json` gespeichert (Fahrwerk/Reifen im Reiter 3), nennt der Coach das konkrete Ziel, sonst eine gerichtete Stufenänderung.
+
+## Setup-Sammlung (setups.json)
+
+Analysen werden unter `Strecke|Layout|Fahrzeug` gespeichert (Findings maschinenlesbar, immer deutsch), inklusive Quelle, Datum und optionalen Notizen. Änderungen der Setup-Werte (Stabi, Fahrzeughöhe, Bremsbalance, Reifendruck) erzeugen eine Historie je Eintrag.
 
 ```json
 {
-  "bridge_exe": "C:\\Tools\\R3E_MoTeC_Bridge.exe",
-  "bridge_args": ["--port", "5566"],
-  "bridge_cwd": "C:\\Tools"
+  "Sachsenring|Sachsenring|Audi R8": {
+    "target_lap_ms": 83500,
+    "notes": "Weicher Stabi vorne hat Untersteuern reduziert",
+    "chassis": { "arb_front": 3, "brake_bias": 52 },
+    "tires": { "pressure_front": 1.7 }
+  }
 }
 ```
 
-```bash
-r3e-coach bridge            # nutzt ./.r3e-coach.json
-r3e-coach bridge --config "C:\Users\Du\r3e-coach.json"
-```
+## Zeiten aus R3E-Resultate (nur lesend)
 
-Ablauf: `r3e-coach bridge` starten → RaceRoom starten → in MoTeC i2 loggen → fahren → Strg+C beendet die Bridge sauber. Danach die CSV exportieren und analysieren:
+Best-/Ø-Zeiten kommen aus der `results.db` von R3E-Resultate (gleiches Datenkonzept):
 
 ```bash
-r3e-coach "C:\MoTeC\i2\Exports\mein-log.csv"
+r3e-coach times                          # alle bekannten Kombinationen
+r3e-coach times --track Sachsenring      # Best/Ø für eine Kombination
 ```
 
-Hinweis: `.r3e-coach.json` enthält einen rechnerspezifischen Pfad (z. B. `S:\Downloads\R2M.exe`) — beim Klonen auf einem anderen PC entsprechend anpassen.
+## Auto-Update (ab 0.6.0)
 
-Tipp: Für ganz ohne Handgriffe kann die Bridge auch über einen Windows-Autostart-Eintrag oder den Taskplaner beim Login gestartet werden.
+Der Knopf „Update installieren“ in der Statusleiste lädt das neueste GitHub-Release, prüft die Version, legt das Update im Staging-Ordner `<App-Ordner>.update` ab, startet `apply-update.cmd` und beendet sich. Konfiguration, Setup-Sammlung und Marker-Dateien bleiben erhalten; die Exe wird durch Umbenennen ersetzt und beim nächsten Start aufgeräumt. Der Fenstertitel zeigt die aktive Version.
 
-## Unterstützte Kanäle
+## Komponenten
 
-Kanalnamen werden robust per Alias-Matching erkannt (Groß-/Kleinschreibung und Sonderzeichen egal). Sinnvoll sind u. a.:
-
-| Zweck | typische MoTeC-Namen |
-|---|---|
-| Zeit / Rundenzeit | `Time`, `Lap Time` |
-| Geschwindigkeit | `Speed`, `GPS Speed` |
-| Gas / Bremse | `Throttle`, `Brake` |
-| Lenkwinkel, Längs-/Querbeschleunigung | `Steering_Angle`, `G_Lat`, `G_Long` |
-| Reifentemperatur je Ecke | `Tyre Temp FL/FR/RL/RR` (auch `_I/_M/_O` — werden gemittelt) |
-| Bremsentemperatur je Ecke | `Brake Temp FL/FR/RL/RR` |
-| Federweg je Ecke | `Susp Travel FL/FR/RL/RR`, `WheelY …` |
-
-Fehlende Kanäle werden übersprungen — jede Regel arbeitet nur mit den vorhandenen Daten.
-
-## Was analysiert wird
-
-- **Reifen:** Temperatur-Balance vorne/hinten und links/rechts, absolutes Temperaturniveau (Ziel ~75–100 °C) → Druck-/Aero-Empfehlungen
-- **Fahrverhalten:** Lenkwinkel und Lenkkorrekturen in Kurven → Unter-/Übersteuern → Aero-, Stabi-, Bremsbalance-Empfehlungen
-- **Bremsen:** Bremsentemperaturen + mutmaßliche Blockierer → Bremsbalance
-- **Fahrwerk:** minimaler Federweg auf Geraden → Durchschlagen → Höhe/Federn
-- **Konsistenz:** Streuung zwischen Best- und Mittellap
-
-## Wichtiger Hinweis
-
-Die Schwellen sind **Heuristiken** aus Telemetrie-Erfahrung, keine Garantien. Coach-Ausgaben immer mit Streckenkenntnis und eigenem Gefühl abgleichen und Änderungen **eine nach der anderen** testen. Das Tool liest nur Daten — es verändert nichts am Fahrzeug.
+| Modul | Aufgabe |
+| --- | --- |
+| `r3e_shared.py` | ctypes-Abtrag der R3E-Shared-Memory-Struktur v3.6 (`$R3E`), Einheiten-Umrechnung |
+| `recorder.py` | Aufzeichnung als eigener Thread: Zustandsmaschine (Warten/Menü/Pause/Box/Aufzeichnung), Sitzungstrennung, `.coachlog` pro Sitzung |
+| `logdata.py` | Lesen/Schreiben von `.coachlog`; direkter Import in `telemetry.Session` |
+| `telemetry.py`/`channels.py` | Kanal-Normalisierung (viele Namensvarianten) und Session-Objekt |
+| `rules.py` | Regelwerk: Reifentemperatur-Balance, Unter-/Übersteuern, Bremsen, Fahrhöhe, Konsistenz |
+| `advice.py` | Priorisierte, konkrete Setup-Hinweise (mit Zielwerten aus `setups.json`) |
+| `store.py` | `setups.json`-Datenmodell (`schema_version` 1) |
+| `queries.py` | Lesender Zugriff auf `results.db` von R3E-Resultate |
+| `updater.py` | Release-Prüfung, Download und Staging-basierter Selbsttausch |
 
 ## Entwicklung
 
 ```bash
 pip install -e .[test]
-pytest
+python -m pytest -q
 ```
 
-App-Icon und Logo liegen als Geometrie in `tools/gen_icon.py` (reine Standardbibliothek) und werden im Build automatisch erzeugt (`python tools/gen_icon.py` schreibt `assets/app.ico` samt PNG); das Vektor-Logo steht unter `assets/logo.svg`.
+- `installer/setup.iss` (Inno Setup) baut die Windows-Installation; Version zentral über `MyAppVersion`.
+- `tools/gen_icon.py` erzeugt `assets/app.ico` (Exe/Verknüpfung) und `assets/app.png` (Qt-Fenster-/Taskleisten-Icon — Qt kann PNG-in-ICO nicht laden).
+- Tests laufen unter Linux ohne RaceRoom: Shared-Memory-Zugriffe sind über injizierbare Byte-Puffer testbar.

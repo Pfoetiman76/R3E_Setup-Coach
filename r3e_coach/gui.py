@@ -1,42 +1,52 @@
 import os
 import sys
 import threading
-import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon
-from PySide6.QtWidgets import (QApplication, QCheckBox, QFileDialog, QGridLayout,
+from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QPlainTextEdit, QPushButton,
                                QTableWidget, QTableWidgetItem, QTabWidget,
                                QVBoxLayout, QWidget)
 
-from .advice import build_advice
-from .bridge import (BridgeError, BridgeProcess, default_config_path, find_config,
-                     load_config, resolve_args, resolve_exe, save_config)
 from . import __version__
-from .parser import parse_motec_csv
+from .advice import build_advice
+from .bridge_config import load_gui_config, default_config_path
+from .logdata import read_log, session_from_log
 from .queries import connect as db_connect, lap_stats
+from .recorder import (STATE_MENUS, STATE_PAUSED, STATE_PIT,
+                       STATE_RECORDING, STATE_STOPPED, STATE_WAITING,
+                       Recorder, default_recordings_dir)
 from .report import finding_dicts, render_text
 from .rules import Ctx, analyze
 from .store import (add_analysis, default_store_path, ensure_entry, entry_key,
                     get_entry, list_keys, load, save, upsert_values)
 from .theme import apply_theme
-from .updater import (_start_swap, check_for_update, prepare_update)
+from .updater import _start_swap, check_for_update, prepare_update
 
 LABELS = {
     "de": {
         "title": "R3E Setup-Coach",
-        "tab_bridge": "1) Bridge (RaceRoom → MoTeC)",
+        "tab_record": "1) Aufzeichnen (RaceRoom)",
         "tab_analyze": "2) Telemetrie analysieren",
         "tab_setups": "3) Setups",
-        "bridge": "Bridge starten/stoppen",
-        "exe": "Bridge-Exe:",
-        "start": "Bridge starten",
-        "stop": "Bridge stoppen",
+        "record": "Telemetrie aufzeichnen",
+        "start": "Aufzeichnung starten",
+        "stop": "Aufzeichnung stoppen",
+        "outdir": "Zielordner:",
+        "browse_out": "Wählen …",
+        "rec_state_stopped": "Aufzeichnung gestoppt.",
+        "rec_state_waiting": "Warte auf RaceRoom — Spiel bitte starten.",
+        "rec_state_menus": "RaceRoom läuft — warte, bis Sie auf der Strecke sind.",
+        "rec_state_paused": "Spiel pausiert — Aufzeichnung ruht.",
+        "rec_state_pit": "In der Boxengasse — Aufzeichnung ruht.",
+        "rec_state_recording": "Aufzeichnung läuft: {track} — {vehicle} ({samples} Samples)",
+        "rec_saved": "Gespeichert: {file}",
+        "rec_error": "Fehler bei der Aufzeichnung: {err}",
         "analyze": "Telemetrie analysieren und speichern",
-        "csv": "MoTeC-i2-CSV:",
+        "log": "Aufzeichnung (.coachlog):",
         "browse": "Durchsuchen …",
         "run": "Analysieren",
         "run_save": "Analysieren und speichern",
@@ -54,13 +64,7 @@ LABELS = {
         "col_avg": "Ø-Zeit (Resultate)",
         "col_updated": "Aktualisiert",
         "ready": "Bereit.",
-        "running": "Bridge läuft (PID {pid}) — fahren, dann stoppen.",
-        "stopped": "Bridge beendet.",
-        "exited": "Bridge hat sich selbst beendet (Exit {rc}).",
-        "auto_restart": "Bridge automatisch neu starten (z. B. nach ESC/Session-Wechsel)",
-        "restarted": "Bridge beendet (Exit {rc}) — startet automatisch neu …",
-        "restart_off": "Automatischer Neustart ausgeschaltet: Bridge beendet sich zu schnell hintereinander.",
-        "need_csv": "Bitte CSV-Datei auswählen.",
+        "need_log": "Bitte eine .coachlog-Aufzeichnung auswählen.",
         "need_key": "Bitte Strecke und Fahrzeug angeben, um die Analyse zu speichern.",
         "saved": "Analyse gespeichert unter '{key}'.",
         "values_saved": "Setup-Werte gespeichert.",
@@ -76,15 +80,24 @@ LABELS = {
     },
     "en": {
         "title": "R3E Setup Coach",
-        "tab_bridge": "1) Bridge (RaceRoom → MoTeC)",
+        "tab_record": "1) Record (RaceRoom)",
         "tab_analyze": "2) Analyze telemetry",
         "tab_setups": "3) Setups",
-        "bridge": "Start/stop bridge",
-        "exe": "Bridge exe:",
-        "start": "Start bridge",
-        "stop": "Stop bridge",
+        "record": "Record telemetry",
+        "start": "Start recording",
+        "stop": "Stop recording",
+        "outdir": "Destination folder:",
+        "browse_out": "Browse …",
+        "rec_state_stopped": "Recording stopped.",
+        "rec_state_waiting": "Waiting for RaceRoom — please start the game.",
+        "rec_state_menus": "RaceRoom running — waiting until you are on track.",
+        "rec_state_paused": "Game paused — recording idle.",
+        "rec_state_pit": "In pit lane — recording idle.",
+        "rec_state_recording": "Recording: {track} — {vehicle} ({samples} samples)",
+        "rec_saved": "Saved: {file}",
+        "rec_error": "Recording error: {err}",
         "analyze": "Analyze telemetry and save",
-        "csv": "MoTeC i2 CSV:",
+        "log": "Recording (.coachlog):",
         "browse": "Browse …",
         "run": "Analyze",
         "run_save": "Analyze and save",
@@ -102,13 +115,7 @@ LABELS = {
         "col_avg": "Avg lap (results)",
         "col_updated": "Updated",
         "ready": "Ready.",
-        "running": "Bridge running (PID {pid}) — drive, then stop.",
-        "stopped": "Bridge stopped.",
-        "exited": "Bridge exited on its own (exit {rc}).",
-        "auto_restart": "Restart bridge automatically (e.g. after ESC/session change)",
-        "restarted": "Bridge exited (exit {rc}) — restarting automatically …",
-        "restart_off": "Automatic restart turned off: bridge exits too quickly in a row.",
-        "need_csv": "Please pick a CSV file.",
+        "need_log": "Please pick a .coachlog recording.",
         "need_key": "Please provide track and vehicle to save the analysis.",
         "saved": "Analysis saved under '{key}'.",
         "values_saved": "Setup values saved.",
@@ -124,6 +131,15 @@ LABELS = {
     },
 }
 
+STATE_LABELS = {
+    STATE_STOPPED: "rec_state_stopped",
+    STATE_WAITING: "rec_state_waiting",
+    STATE_MENUS: "rec_state_menus",
+    STATE_PAUSED: "rec_state_paused",
+    STATE_PIT: "rec_state_pit",
+    STATE_RECORDING: "rec_state_recording",
+}
+
 
 def _icon_candidates():
     """Kandidaten-Pfade für das Fenster-Icon.
@@ -131,8 +147,6 @@ def _icon_candidates():
     PNG bevorzugt: Qt kann die PNG-komprimierten Einträge der ICO-Datei
     nicht lesen (Windows für Exe/Verknüpfung schon) — das Fenster- und
     Taskleisten-Icon lädt daher assets/app.png, das ICO bleibt Fallback.
-    Im Build liegt die Datei dank --add-data im _internal-Ordner neben der
-    Exe, in der Quelle im assets-Ordner des Repos.
     """
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).resolve().parent
@@ -157,18 +171,11 @@ class _UpdateSignals(QObject):
     """Thread-sichere Rückmeldung aus dem Update-Worker-Thread an die GUI.
 
     Qt-Regel: QTimer darf NUR im (GUI-)Hauptthread verwendet werden. Ein
-    Hintergrund-Thread meldet daher Ergebnisse über Signale — Qt liefert sie
-    automatisch im Hauptthread aus (queued connection).
+    Hintergrund-Thread meldet daher Ergebnisse über Signale.
     """
 
     done = Signal(str)    # Pfad des Tausch-Batches
     failed = Signal(str)  # Fehlermeldung
-
-
-def load_gui_config(config_path=None):
-    """Liefert (Config-Daten, Config-Pfad) — Pfad None, wenn keine gefunden."""
-    path = find_config(config_path)
-    return (load_config(path) if path else {}), path
 
 
 class CoachGui(QMainWindow):
@@ -176,15 +183,9 @@ class CoachGui(QMainWindow):
         super().__init__()
         self.lang = lang
         self.t = LABELS[lang]
-        self.bridge = None
-        # 0.6.5: Automatischer Neustart der Bridge (R2M beendet sich bei
-        # ESC/Session-Wechsel selbst) statt einmaligem Aus.
-        self._bridge_user_stopped = False
-        self._bridge_fast_fails = 0
-        self._bridge_started_ts = 0.0
-        self.bridge_poll = QTimer(self)
-        self.bridge_poll.setInterval(500)
-        self.bridge_poll.timeout.connect(self._poll_bridge)
+        self.recorder = None
+        self.recorder_thread = None
+        self._rec_files_seen = set()
         self.config, self._config_path = load_gui_config()
         self.update_info = None
         self._update_signals = _UpdateSignals()
@@ -194,7 +195,7 @@ class CoachGui(QMainWindow):
         self.resize(880, 640)
 
         tabs = QTabWidget()
-        tabs.addTab(self._build_bridge_tab(), self.t["tab_bridge"])
+        tabs.addTab(self._build_record_tab(), self.t["tab_record"])
         tabs.addTab(self._build_analyze_tab(), self.t["tab_analyze"])
         tabs.addTab(self._build_setups_tab(), self.t["tab_setups"])
         self.setCentralWidget(tabs)
@@ -205,32 +206,35 @@ class CoachGui(QMainWindow):
         self.update_btn.setEnabled(False)
         self.update_btn.clicked.connect(self.install_update)
         self.statusBar().addPermanentWidget(self.update_btn)
+
+        self.rec_poll = QTimer(self)
+        self.rec_poll.setInterval(500)
+        self.rec_poll.timeout.connect(self._poll_recorder)
         QTimer.singleShot(0, self._check_update)
 
     # ---------- Oberfläche ----------
 
-    def _build_bridge_tab(self):
-        box = QGroupBox(self.t["bridge"])
+    def _build_record_tab(self):
+        box = QGroupBox(self.t["record"])
         grid = QGridLayout(box)
-        grid.addWidget(QLabel(self.t["exe"]), 0, 0)
-        self.exe_edit = QLineEdit(self.config.get("bridge_exe", ""))
-        grid.addWidget(self.exe_edit, 0, 1)
+        grid.addWidget(QLabel(self.t["outdir"]), 0, 0)
+        self.outdir_edit = QLineEdit(self.config.get("recordings_dir") or default_recordings_dir())
+        grid.addWidget(self.outdir_edit, 0, 1)
+        browse = QPushButton(self.t["browse_out"])
+        browse.clicked.connect(self.browse_outdir)
+        grid.addWidget(browse, 0, 2)
+        self.rec_state_label = QLabel(self.t["rec_state_stopped"])
+        grid.addWidget(self.rec_state_label, 1, 0, 1, 3)
         row = QHBoxLayout()
-        self.start_btn = QPushButton(self.t["start"])
-        self.start_btn.clicked.connect(self.start_bridge)
-        self.stop_btn = QPushButton(self.t["stop"])
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self.stop_bridge)
-        row.addWidget(self.start_btn)
-        row.addWidget(self.stop_btn)
+        self.rec_start_btn = QPushButton(self.t["start"])
+        self.rec_start_btn.clicked.connect(self.start_recording)
+        self.rec_stop_btn = QPushButton(self.t["stop"])
+        self.rec_stop_btn.setEnabled(False)
+        self.rec_stop_btn.clicked.connect(self.stop_recording)
+        row.addWidget(self.rec_start_btn)
+        row.addWidget(self.rec_stop_btn)
         row.addStretch(1)
-        grid.addLayout(row, 1, 0, 1, 2)
-        # 0.6.5: Haken fuer automatischen Neustart (Standard an), persistiert
-        # als "bridge_auto_restart" in der Config.
-        self.restart_check = QCheckBox(self.t["auto_restart"])
-        self.restart_check.setChecked(bool(self.config.get("bridge_auto_restart", True)))
-        self.restart_check.toggled.connect(self._persist_auto_restart)
-        grid.addWidget(self.restart_check, 2, 0, 1, 2)
+        grid.addLayout(row, 2, 0, 1, 3)
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.addWidget(box)
@@ -241,11 +245,11 @@ class CoachGui(QMainWindow):
         page = QWidget()
         lay = QVBoxLayout(page)
         grid = QGridLayout()
-        grid.addWidget(QLabel(self.t["csv"]), 0, 0)
-        self.csv_edit = QLineEdit()
-        grid.addWidget(self.csv_edit, 0, 1)
+        grid.addWidget(QLabel(self.t["log"]), 0, 0)
+        self.log_edit = QLineEdit()
+        grid.addWidget(self.log_edit, 0, 1)
         browse = QPushButton(self.t["browse"])
-        browse.clicked.connect(self.browse_csv)
+        browse.clicked.connect(self.browse_log)
         grid.addWidget(browse, 0, 2)
         grid.addWidget(QLabel(self.t["track"]), 1, 0)
         self.track_edit = QLineEdit()
@@ -300,7 +304,6 @@ class CoachGui(QMainWindow):
         detail.addWidget(QLabel(self.t["notes"]), 0, 2)
         self.notes_edit = QLineEdit()
         detail.addWidget(self.notes_edit, 0, 3)
-        label = QLabel(self.t["apply_values"])
         self.apply_btn = QPushButton(self.t["apply_values"])
         self.apply_btn.clicked.connect(self.apply_setup_values)
         detail.addWidget(self.apply_btn, 0, 4)
@@ -310,128 +313,105 @@ class CoachGui(QMainWindow):
         lay.addWidget(self.detail_view, 1)
         return page
 
-    # ---------- Bridge ----------
+    # ---------- Aufzeichnung ----------
 
-    def _set_status(self, key, **kwargs):
-        self.status_label.setText(self.t[key].format(**kwargs) if kwargs else self.t[key])
+    def browse_outdir(self):
+        path = QFileDialog.getExistingDirectory(self, self.t["outdir"],
+                                                self.outdir_edit.text().strip() or "")
+        if path:
+            self.outdir_edit.setText(path)
 
-    def _persist_bridge_exe(self, exe):
-        """Merkt sich die eingegebene Bridge-Exe dauerhaft in der Config.
-
-        Speichern ist Komfort: schlägt es fehl, läuft die App ohne Meldung weiter.
-        """
-        if not exe or exe == self.config.get("bridge_exe"):
-            return
+    def _persist_recordings_dir(self, out_dir):
         try:
             path = self._config_path or default_config_path()
             try:
-                data = load_config(path)
-            except (OSError, BridgeError):
-                data = {}
-            data["bridge_exe"] = exe
-            save_config(path, data)
-            self.config = data
-            self._config_path = path
-        except Exception:
-            pass
-
-    def _persist_auto_restart(self, checked):
-        """0.6.5: Haken 'automatisch neu starten' dauerhaft merken."""
-        try:
-            path = self._config_path or default_config_path()
-            try:
-                data = load_config(path)
-            except (OSError, BridgeError):
-                data = {}
-            if data.get("bridge_auto_restart") is bool(checked):
-                self.config = data if data else self.config
-                return
-            data["bridge_auto_restart"] = bool(checked)
-            save_config(path, data)
-            self.config = data
-            self._config_path = path
-        except Exception:
-            pass
-
-    def start_bridge(self):
-        try:
-            exe = resolve_exe(self.exe_edit.text().strip() or None, self.config)
-            args = resolve_args(None, self.config)
-            cwd = self.config.get("bridge_cwd")
-        except BridgeError as exc:
-            self._show(str(exc))
-            return
-        self.bridge = BridgeProcess(exe, args, cwd=cwd)
-        self.bridge.start()
-        self._bridge_user_stopped = False  # 0.6.5: frischer Start
-        self._bridge_fast_fails = 0
-        self._bridge_started_ts = time.monotonic()
-        self._persist_bridge_exe(self.exe_edit.text().strip())
-        self.start_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
-        self._set_status("running", pid=self.bridge.proc.pid)
-        self.bridge_poll.start()
-
-    def _poll_bridge(self):
-        if self.bridge is None:
-            self.bridge_poll.stop()
-            return
-        if self.bridge.is_running():
-            return
-        rc = self.bridge.proc.returncode
-        # 0.6.5: Wurde die Bridge vom Nutzer gestoppt, bleibt es beim alten
-        # Verhalten (einmal beendet, Start-Knopf wieder frei).
-        if getattr(self, "_bridge_user_stopped", False):
-            self._bridge_exited_final(rc)
-            return
-        # 0.6.5: Automatismus - R2M beendet sich selbst bei ESC/Session-Wechsel
-        # und wird sofort wieder gestartet. Beendet sich die Exe wiederholt
-        # binnen weniger Sekunden, greift eine Sicherung, die den Neustart
-        # stoppt (kein Endlos-Neustart bei kaputter Exe).
-        if self.restart_check.isChecked():
-            uptime = time.monotonic() - getattr(self, "_bridge_started_ts", 0.0)
-            if uptime < 5.0:
-                self._bridge_fast_fails += 1
-            else:
-                self._bridge_fast_fails = 0
-            if self._bridge_fast_fails >= 5:
-                self._set_status("restart_off")
-                self._bridge_exited_final(rc)
-                return
-            try:
-                self._set_status("restarted", rc=rc)
-                self.bridge.start()
-                self._bridge_started_ts = time.monotonic()
-                self._set_status("running", pid=self.bridge.proc.pid)
-                return
+                data = load_gui_config(path)[0]
             except Exception:
-                pass
-        self._bridge_exited_final(rc)
+                data = {}
+            if data.get("recordings_dir") == out_dir:
+                return
+            from .bridge_config import save_config
+            data["recordings_dir"] = out_dir
+            save_config(path, data)
+            self._config_path = path
+        except Exception:
+            pass
 
-    def _bridge_exited_final(self, rc):
-        self.bridge_poll.stop()
-        self._set_status("exited", rc=rc)
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
+    def start_recording(self):
+        if self.recorder is not None:
+            return
+        out_dir = self.outdir_edit.text().strip() or default_recordings_dir()
+        self._persist_recordings_dir(out_dir)
+        self.recorder = Recorder(out_dir=out_dir)
+        self.recorder_thread = threading.Thread(target=self.recorder.run, daemon=True)
+        self.recorder_thread.start()
+        self.rec_start_btn.setEnabled(False)
+        self.rec_stop_btn.setEnabled(True)
+        self.rec_poll.start()
 
-    def stop_bridge(self):
-        self._bridge_user_stopped = True  # 0.6.5: kein automatischer Neustart nach Stop-Knopf
-        if self.bridge is not None:
-            self.bridge.stop()
-        self._set_status("stopped")
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
+    def stop_recording(self):
+        if self.recorder is None:
+            return
+        rec = self.recorder
+        rec.stop()
+        if self.recorder_thread is not None:
+            self.recorder_thread.join(timeout=5)
+        self.recorder = None
+        self.recorder_thread = None
+        self.rec_poll.stop()
+        self.rec_state_label.setText(self.t["rec_state_stopped"])
+        self.rec_start_btn.setEnabled(True)
+        self.rec_stop_btn.setEnabled(False)
+
+    def _poll_recorder(self):
+        """Fragt den Recorder-Status ab (reiner Lesezugriff im GUI-Thread)."""
+        if self.recorder is None:
+            return
+        st = self.recorder.status()
+        label = STATE_LABELS.get(st["state"], "rec_state_stopped")
+        if st["state"] == STATE_RECORDING:
+            self.rec_state_label.setText(self.t[label].format(
+                track=st["meta"].get("track", "?"),
+                vehicle=st["meta"].get("vehicle", "?"),
+                samples=st["samples"]))
+        else:
+            self.rec_state_label.setText(self.t[label])
+        if st["error"]:
+            self.status_label.setText(self.t["rec_error"].format(err=st["error"]))
+        for path in st["files"]:
+            if path not in self._rec_files_seen:
+                self._rec_files_seen.add(path)
+                self.status_label.setText(self.t["rec_saved"].format(file=os.path.basename(path)))
+                self.log_edit.setText(path)  # neueste Aufzeichnung direkt zum Analysieren
+
+    def closeEvent(self, event):
+        self.stop_recording()
+        super().closeEvent(event)
 
     # ---------- Analyse ----------
 
-    def browse_csv(self):
-        path, _ = QFileDialog.getOpenFileName(self, self.t["csv"], "",
-                                              "CSV (*.csv);;Alle Dateien (*.*)")
+    def browse_log(self):
+        path, _ = QFileDialog.getOpenFileName(self, self.t["log"], "",
+                                              "Coach-Log (*.coachlog);;Alle Dateien (*.*)")
         if path:
-            self.csv_edit.setText(path)
+            self.log_edit.setText(path)
+            self._fill_key_from_log(path)
+
+    def _fill_key_from_log(self, path):
+        """Strecke/Layout/Fahrzeug automatisch aus dem Log übernehmen."""
+        try:
+            meta, _, _, _ = read_log(path)
+        except (OSError, ValueError):
+            return
+        if meta.get("track"):
+            self.track_edit.setText(meta["track"])
+        if meta.get("layout"):
+            self.layout_edit.setText(meta["layout"])
+        if meta.get("vehicle"):
+            self.vehicle_edit.setText(meta["vehicle"])
 
     def _stored_setup_values(self):
-        """0.7.0: gespeicherte Setup-Werte, wenn Strecke+Auto im Reiter stehen."""
+        """Gespeicherte Setup-Werte, wenn Strecke+Auto im Reiter stehen."""
         track = self.track_edit.text().strip()
         vehicle = self.vehicle_edit.text().strip()
         if not track or not vehicle:
@@ -446,14 +426,16 @@ class CoachGui(QMainWindow):
         return entry.get("chassis") or None, entry.get("tires") or None
 
     def _analyze_current(self):
-        path = self.csv_edit.text().strip()
+        path = self.log_edit.text().strip()
         if not path:
-            self._show(self.t["need_csv"])
+            self._show(self.t["need_log"])
             return None
-        session = parse_motec_csv(path)
+        try:
+            session = session_from_log(path)
+        except (OSError, ValueError) as exc:
+            self._show(str(exc))
+            return None
         findings = analyze(session, Ctx())
-        # 0.7.0: konkrete priorisierte Hinweise; gespeicherte Setup-Werte
-        # (Strecke+Auto angegeben) ergeben Zielwerte statt Stufenangaben.
         chassis, tires = self._stored_setup_values()
         advice = build_advice(findings, chassis, tires)
         self._show(render_text(findings, session, lang=self.lang, advice=advice))
@@ -474,12 +456,12 @@ class CoachGui(QMainWindow):
         key = entry_key(track, self.layout_edit.text().strip() or None, vehicle)
         data = load()
         add_analysis(data, key, {
-            "csv_source": os.path.abspath(self.csv_edit.text().strip()),
+            "log_source": os.path.abspath(self.log_edit.text().strip()),
             "samples": len(result["session"]),
             "findings": finding_dicts(result["findings"]),
         })
         save(data, default_store_path())
-        self._set_status("saved", key=key)
+        self.status_label.setText(self.t["saved"].format(key=key))
         self.reload_setups()
 
     # ---------- Setups ----------
@@ -553,7 +535,7 @@ class CoachGui(QMainWindow):
         upsert_values(data, key, notes=self.notes_edit.text().strip() or None,
                       target_lap_ms=int(target) if target.isdigit() else None)
         save(data, default_store_path())
-        self._set_status("values_saved")
+        self.status_label.setText(self.t["values_saved"])
         self.reload_setups()
 
     # ---------- Ausgabe / Update ----------
@@ -614,4 +596,4 @@ def main_gui(lang="de"):
     window = CoachGui(lang=lang)
     window.show()
     window.reload_setups()
-    sys.exit(app.exec()
+    sys.exit(app.exec())

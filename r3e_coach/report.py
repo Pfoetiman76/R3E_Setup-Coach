@@ -102,4 +102,4 @@ def render_json(findings, session, lang="de", advice=None):
     if advice is not None:
         from .advice import advice_dicts
         payload["advice"] = advice_dicts(advice, lang)
-    return json.dumps(payload, ensure_ascii=False, indent=2
+    return json.dumps(payload, ensure_ascii=False, indent=2)
