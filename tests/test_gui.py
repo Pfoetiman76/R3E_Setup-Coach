@@ -25,6 +25,7 @@ def test_gui_labels_complete():
     for lang in ("de", "en"):
         for key in ("title", "tab_record", "tab_analyze", "tab_setups",
                     "record", "start", "stop", "outdir", "browse_out",
+                    "auto_record", "auto_started",
                     "rec_state_stopped", "rec_state_waiting", "rec_state_recording",
                     "rec_saved", "rec_error",
                     "update_btn", "update_downloading", "update_restart",
@@ -38,12 +39,40 @@ def test_gui_class_api():
     gui = _gui()
     for attr in ("install_update", "_on_update_done",
                  "start_recording", "stop_recording",
+                 "_auto_start_recording", "_toggle_auto_record",
                  "browse_outdir", "browse_log",
                  "run_analyze", "run_analyze_save",
                  "reload_setups", "apply_setup_values"):
         assert hasattr(gui.CoachGui, attr)
     for gone in ("start_bridge", "stop_bridge", "browse_csv", "_poll_bridge"):
         assert not hasattr(gui.CoachGui, gone), f"entfernt erwartet: {gone}"
+
+
+def test_gui_autorecord_pitboss_style():
+    """0.8.1 (ohne PySide6): Automatische Aufzeichnung wie in PitBoss pruefen."""
+    import ast, re
+    src = open(__import__("os").path.join(
+        __import__("os").path.dirname(__import__("os").path.dirname(
+            __import__("os").path.abspath(__file__))), "r3e_coach", "gui.py"),
+        encoding="utf-8").read()
+    tree = ast.parse(src)
+    # Haken existiert, Standard an, Persistenzschluessel auto_record
+    assert "QCheckBox" in src
+    assert 'self.config.get("auto_record", True)' in src
+    assert 'data["auto_record"]' in src
+    self_cls = [c for c in ast.walk(tree) if isinstance(c, ast.ClassDef)
+                and c.name == "CoachGui"][0]
+    names = {n.name for n in ast.walk(self_cls) if isinstance(n, ast.FunctionDef)}
+    assert "_auto_start_recording" in names and "_toggle_auto_record" in names
+    assert "_persist_auto_record" in names
+    # App-Start triggert Auto-Start (singleShot 0 -> _auto_start_recording)
+    assert "QTimer.singleShot(0, self._auto_start_recording)" in src
+    # App-Ende schaltet den Automatik-Modus NICHT aus
+    assert "closeEvent" in names
+    m = re.search(r"def closeEvent\(self, event\):\s*self\.stop_recording\(user_stop=False\)", src)
+    assert m, "closeEvent muss stop_recording(user_stop=False) aufrufen"
+    # manueller Stop deaktiviert den Automatik-Modus
+    assert "user_stop and self.auto_record_check.isChecked()" in src
 
 
 def test_gui_starts_recorder_not_bridge(tmp_path, monkeypatch):
