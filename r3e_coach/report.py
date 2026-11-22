@@ -27,7 +27,7 @@ def _localized(entry, lang):
     return entry
 
 
-def render_text(findings, session, lang="de"):
+def render_text(findings, session, lang="de", advice=None):
     time = session.col("time")
     duration = ""
     if len(time) > 1 and time[0] is not None and time[-1] is not None:
@@ -44,7 +44,6 @@ def render_text(findings, session, lang="de"):
         else:
             lines.append({"de": "Keine Auffälligkeiten gefunden — Setup scheint stimmig.",
                           "en": "No issues found — setup looks consistent."}[lang])
-        return "\n".join(lines)
     for sev in SEVERITY_ORDER:
         group = [f for f in findings if f.severity == sev]
         if not group:
@@ -57,6 +56,17 @@ def render_text(findings, session, lang="de"):
             for a in f.actions:
                 lines.append(f"    → {_localized(a, lang)}")
         lines.append("")
+    # 0.7.0: priorisierte, konkrete Setup-Hinweise (advice.py) anhängen
+    if advice is not None:
+        from .advice import ADVICE_HEADER, NO_ADVICE, render_lines
+        lines.append("=" * 60)
+        lines.append(ADVICE_HEADER.get(lang, ADVICE_HEADER["de"]))
+        lines.append("")
+        if advice:
+            lines.extend(render_lines(advice, lang=lang))
+        else:
+            lines.append(NO_ADVICE.get(lang, NO_ADVICE["de"]))
+        lines.append("")
     return "\n".join(lines).rstrip()
 
 
@@ -65,7 +75,9 @@ def finding_dicts(findings, lang="de"):
 
     Für die Persistenz wird immer Deutsch gespeichert (lang="de" ist
     bewusster Standard des Datenkonzepts); die Anzeigesprache bleibt
-    reine Ausgabesache.
+    reine Ausgabesache. Seit 0.7.0 enthält jede Fundstelle zusätzlich
+    die strukturierten Zusatzdaten (data) — alte Einträge ohne dieses
+    Feld bleiben lesbar.
     """
     return [
         {
@@ -74,16 +86,20 @@ def finding_dicts(findings, lang="de"):
             "severity": f.severity,
             "text": _localized(f.text, lang),
             "actions": [_localized(a, lang) for a in f.actions],
+            "data": getattr(f, "data", None) or {},
         }
         for f in findings
     ]
 
 
-def render_json(findings, session, lang="de"):
+def render_json(findings, session, lang="de", advice=None):
     payload = {
         "source": session.source,
         "samples": len(session),
         "language": lang,
         "findings": finding_dicts(findings, lang),
     }
-    return json.dumps(payload, ensure_ascii=False, indent=2)
+    if advice is not None:
+        from .advice import advice_dicts
+        payload["advice"] = advice_dicts(advice, lang)
+    return json.dumps(payload, ensure_ascii=False, indent=2

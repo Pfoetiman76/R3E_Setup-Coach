@@ -2,11 +2,13 @@ import argparse
 import os
 import sys
 
+from .advice import build_advice
 from .bridge import BridgeError, find_config, load_config, resolve_args, resolve_exe, run_bridge
 from .parser import parse_motec_csv
 from .report import finding_dicts, render_json, render_text
 from .rules import Ctx, analyze
-from .store import add_analysis, default_store_path, entry_key, list_keys, load, save
+from .store import (add_analysis, default_store_path, entry_key, get_entry,
+                    list_keys, load, save)
 
 
 def _add_common(p):
@@ -42,7 +44,7 @@ def build_parser():
     _add_common(s)
     _add_store_args(s)
     s.add_argument("--key", help="Nur diesen Eintrag zeigen (Format 'track|layout|vehicle')")
-    s.add_argument("--json", action="store_true", help="Ausgabe als JSON statt Text")
+    s.add_argument("--json", action="store_true", help="Ausgabe als JSON")
 
     b = sub.add_parser("bridge", help="Bridge-Exe starten, das RaceRoom-Daten an MoTeC liefert, und per Strg+C stoppen")
     _add_common(b)
@@ -64,17 +66,35 @@ def build_parser():
     t_.add_argument("--track", help="Streckenname (leer lassen für alle Kombinationen)")
     t_.add_argument("--layout", help="Layout-Name (Standard: wie Strecke)")
     t_.add_argument("--vehicle", help="Fahrzeugname")
-    t_.add_argument("--json", action="store_true", help="Ausgabe als JSON statt Text")
+    t_.add_argument("--json", action="store_true", help="Ausgabe als JSON")
     return p
+
+
+def _stored_values(args):
+    """0.7.0: gespeicherte Setup-Werte für track|layout|vehicle, falls vorhanden."""
+    if not (getattr(args, "track", None) and getattr(args, "vehicle", None)):
+        return None, None
+    try:
+        key = entry_key(args.track, args.layout, args.vehicle)
+        entry = get_entry(load(args.store or default_store_path()), key)
+    except (OSError, ValueError):
+        return None, None
+    if not entry:
+        return None, None
+    return entry.get("chassis") or None, entry.get("tires") or None
 
 
 def _run_analyze(args):
     session = parse_motec_csv(args.csv)
     findings = analyze(session, Ctx(min_speed=args.min_speed))
+    # 0.7.0: konkrete priorisierte Hinweise; mit --track/--vehicle fließen
+    # die gespeicherten Werte aus setups.json ein (konkrete Ziele statt Stufen).
+    chassis, tires = _stored_values(args)
+    advice = build_advice(findings, chassis, tires)
     if args.json:
-        print(render_json(findings, session, lang=args.lang))
+        print(render_json(findings, session, lang=args.lang, advice=advice))
     else:
-        print(render_text(findings, session, lang=args.lang))
+        print(render_text(findings, session, lang=args.lang, advice=advice))
     if args.save:
         if not args.track or not args.vehicle:
             print("Fehler: --save erfordert --track und --vehicle (und optional --layout).", file=sys.stderr)
@@ -234,4 +254,4 @@ def main(argv=None):
         return 2
     except FileNotFoundError as exc:
         print(f"Fehler: Datei nicht gefunden: {exc.filename or exc}", file=sys.stderr)
-        return 2
+        return 

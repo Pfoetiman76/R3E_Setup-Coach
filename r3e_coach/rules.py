@@ -11,6 +11,9 @@ class Finding:
     severity: str
     text: dict
     actions: list = field(default_factory=list)
+    # 0.7.0: maschinenlesbare Zusatzdaten (Richtung, Messwerte), aus denen
+    # advice.py konkrete Setup-Hinweise mit Zielwerten ableitet.
+    data: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -54,7 +57,8 @@ def rule_tyre_temps(session, ctx):
             [{"de": "Frontflügel eine Stufe zurück oder Heckflügel eine Stufe hoch (R3E-Menü: Aero).",
               "en": "Lower front wing one step or raise rear wing one step (R3E menu: Aero)."},
              {"de": "Reifendruck vorne um 0,1 bar senken.",
-              "en": "Lower front tyre pressure by 0.1 bar."}]))
+              "en": "Lower front tyre pressure by 0.1 bar."}],
+            data={"direction": "front_hot", "front": round(front, 1), "rear": round(rear, 1)}))
     elif rear - front > 5:
         out.append(Finding(
             "tyre_temp_balance", "tyres", "high",
@@ -63,7 +67,8 @@ def rule_tyre_temps(session, ctx):
             [{"de": "Heckflügel eine Stufe hoch oder Frontflügel eine Stufe zurück (R3E-Menü: Aero).",
               "en": "Raise rear wing one step or lower front wing one step (R3E menu: Aero)."},
              {"de": "Reifendruck hinten um 0,1 bar senken.",
-              "en": "Lower rear tyre pressure by 0.1 bar."}]))
+              "en": "Lower rear tyre pressure by 0.1 bar."}],
+            data={"direction": "rear_hot", "front": round(front, 1), "rear": round(rear, 1)}))
     if abs(left - right) > 4:
         hot_de = "links" if left > right else "rechts"
         hot_en = "left" if left > right else "right"
@@ -72,7 +77,9 @@ def rule_tyre_temps(session, ctx):
             {"de": f"Reifentemperatur links/rechts ungleich ({left:.1f} °C vs. {right:.1f} °C) — Strecke belastet eine Seite stärker.",
              "en": f"Left/right tyre temp imbalance ({left:.1f} °C vs. {right:.1f} °C) — the track loads one side more."},
             [{"de": f"Druck auf der heißeren Seite ({hot_de}) um 0,1 bar senken.",
-              "en": f"Lower pressure on the hotter side ({hot_en}) by 0.1 bar."}]))
+              "en": f"Lower pressure on the hotter side ({hot_en}) by 0.1 bar."}],
+            data={"hotter": "left" if left > right else "right",
+                  "left": round(left, 1), "right": round(right, 1)}))
     if overall < TYRE_IDEAL[0]:
         out.append(Finding(
             "tyre_temp_window", "tyres", "medium",
@@ -81,14 +88,16 @@ def rule_tyre_temps(session, ctx):
             [{"de": "Reifendruck rundum um 0,1 bar erhöhen.",
               "en": "Raise tyre pressure all round by 0.1 bar."},
              {"de": "Negativen Sturz leicht erhöhen (R3E-Menü: Fahrwerk).",
-              "en": "Increase negative camber slightly (R3E menu: Suspension)."}]))
+              "en": "Increase negative camber slightly (R3E menu: Suspension)."}],
+            data={"state": "cold", "overall": round(overall, 1)}))
     elif overall > TYRE_IDEAL[1]:
         out.append(Finding(
             "tyre_temp_window", "tyres", "medium",
             {"de": f"Reifen insgesamt zu heiß (Ø {overall:.1f} °C, Ziel {TYRE_IDEAL[0]:.0f}–{TYRE_IDEAL[1]:.0f} °C).",
              "en": f"Tyres too hot overall (avg {overall:.1f} °C, target {TYRE_IDEAL[0]:.0f}–{TYRE_IDEAL[1]:.0f} °C)."},
             [{"de": "Reifendruck rundum um 0,1 bar senken.",
-              "en": "Lower tyre pressure all round by 0.1 bar."}]))
+              "en": "Lower tyre pressure all round by 0.1 bar."}],
+            data={"state": "hot", "overall": round(overall, 1)}))
     return out
 
 
@@ -134,7 +143,8 @@ def rule_handling(session, ctx):
              {"de": "Stabi vorne eine Stufe weicher oder Federn vorne weicher (R3E-Menü: Fahrwerk).",
               "en": "Soften front anti-roll bar one step or front springs (R3E menu: Suspension)."},
              {"de": "Bremsbalance 1–2 % nach vorne (R3E-Menü: Bremsen).",
-              "en": "Move brake balance 1–2 % forward (R3E menu: Brakes)."}]))
+              "en": "Move brake balance 1–2 % forward (R3E menu: Brakes)."}],
+            data={"mean_steer": round(mean_steer, 1)}))
     elif corrections_per_min > 6:
         out.append(Finding(
             "oversteer", "handling", "medium",
@@ -143,7 +153,8 @@ def rule_handling(session, ctx):
             [{"de": "Heckflügel eine Stufe hoch (R3E-Menü: Aero).",
               "en": "Raise rear wing one step (R3E menu: Aero)."},
              {"de": "Stabi hinten weicher oder Differential öffnen (R3E-Menü: Fahrwerk/Getriebe).",
-              "en": "Soften rear anti-roll bar or open the differential (R3E menu: Suspension/Drivetrain)."}]))
+              "en": "Soften rear anti-roll bar or open the differential (R3E menu: Suspension/Drivetrain)."}],
+            data={"corrections_per_min": round(corrections_per_min, 1)}))
     return out
 
 
@@ -179,14 +190,18 @@ def rule_brakes(session, ctx):
             [{"de": "Bremsbalance 1–2 % nach hinten verschieben (R3E-Menü: Bremsen).",
               "en": "Move brake balance 1–2 % rearward (R3E menu: Brakes)."},
              {"de": "Bremsdruck vorn reduzieren, falls verstellbar.",
-              "en": "Reduce front brake pressure if adjustable."}]))
+              "en": "Reduce front brake pressure if adjustable."}],
+            data={"direction": "too_front", "front": round(front, 1), "rear": round(rear, 1),
+                  "lockups": lockups}))
     elif rear - front > 60:
         out.append(Finding(
             "brake_balance", "brakes", "medium",
             {"de": f"Bremsbalance zu weit hinten (hinten {rear:.0f} °C, vorn {front:.0f} °C) — lange Bremswege, Instabilität.",
              "en": f"Brake balance too far rearward (rear {rear:.0f} °C, front {front:.0f} °C) — long stopping distances, instability."},
             [{"de": "Bremsbalance 1–2 % nach vorne verschieben (R3E-Menü: Bremsen).",
-              "en": "Move brake balance 1–2 % forward (R3E menu: Brakes)."}]))
+              "en": "Move brake balance 1–2 % forward (R3E menu: Brakes)."}],
+            data={"direction": "too_rear", "front": round(front, 1), "rear": round(rear, 1),
+                  "lockups": lockups}))
     return out
 
 
@@ -219,7 +234,8 @@ def rule_ride_height(session, ctx):
             [{"de": "Fahrzeughöhe vorn/hinten je eine Stufe erhöhen (R3E-Menü: Fahrwerk).",
               "en": "Raise ride height front/rear by one step (R3E menu: Suspension)."},
              {"de": "Federn eine Stufe härter, falls die Höhe nicht weiter angehoben werden soll.",
-              "en": "Stiffen springs one step if ride height should stay as is."}]))
+              "en": "Stiffen springs one step if ride height should stay as is."}],
+            data={"min_travel": round(min_travel, 1)}))
     return out
 
 
@@ -245,7 +261,8 @@ def rule_consistency(session, ctx):
             {"de": f"Rundenzeiten schwanken um {delta:.1f} % zwischen Best- ({best:.2f} s) und Mittellap ({med:.2f} s).",
              "en": f"Lap times vary by {delta:.1f} % between best ({best:.2f} s) and median lap ({med:.2f} s)."},
             [{"de": "Setup-Schritte einzeln testen und nur beibehalten, wenn die Streuung sinkt.",
-              "en": "Test setup changes one at a time and keep them only if the spread shrinks."}]))
+              "en": "Test setup changes one at a time and keep them only if the spread shrinks."}],
+            data={"delta_pct": round(delta, 1)}))
     return out
 
 
@@ -259,4 +276,4 @@ def analyze(session, ctx=None):
     for rule in RULES:
         findings.extend(rule(session, ctx))
     findings.sort(key=lambda f: SEVERITY_ORDER.get(f.severity, 3))
-    return findings
+    return finding

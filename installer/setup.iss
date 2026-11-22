@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "0.6.4"
+#define MyAppVersion "0.7.0"
 #endif
 #define MyAppName "R3E Setup-Coach"
 #define MyAppPublisher "Pfoetiman76"
@@ -40,4 +40,4 @@ Name: "{group}\{cm:UninstallProgram,R3E Setup-Coach}"; Filename: "{uninstallexe}
 Name: "{autodesktop}\R3E Setup-Coach"; Filename: "{app}\R3E-Setup-Coach.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\R3E-Setup-Coach.exe"; Description: "R3E Setup-Coach starten"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\R3E-Setup-Coach.exe"; Description: "R3E Setup-Coach starten"; Flags: nowait postinstall skipifsilen
