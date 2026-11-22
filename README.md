@@ -27,6 +27,7 @@ Der Coach liest die offizielle Shared-Memory-Schnittstelle von RaceRoom (`$R3E`,
 
 - Strecke/Layout/Fahrzeug stehen automatisch im Log (auch für die Analyse und `setups.json`).
 - Zielordner standardmäßig: `Dokumente\R3E Setup-Coach\recordings`. Dort liegt zusätzlich `coach-diagnose.txt` (ab 0.9.2): ein Protokoll aller Ereignisse mit Uhrzeit (RaceRoom erkannt, Zustandswechsel, geschriebene Dateien, Fehler) — hilfreich, wenn die App während der Fahrt im VR-Headset nicht sichtbar ist.
+- **Ab 0.9.3** sucht die Schnittstelle den Shared Memory in drei Namensräumen (`Local\$R3E`, `$R3E`, `Global\$R3E`), und `coach-diagnose.txt` protokolliert, über welchen Weg die Verbindung zustande kam. Beim Auto-Update werden die Nutzerdaten (`.r3e-coach.json`, `setups.json`) zusätzlich nach `%TEMP%` gesichert und nach dem Kopieren zurückgeholt — ein Fehlschlagen der xcopy-Ausschlussliste kann die Konfiguration nicht mehr überschreiben; das Update-Paket enthält zudem keine Standard-Config mehr.
 - **GUI: automatische Aufzeichnung ab 0.8.1** — die App startet den Rekorder von selbst und wartet auf RaceRoom; ein manueller Start ist nicht mehr nötig (Haken „Automatisch aufzeichnen", persistiert als `auto_record`).
 - Alte R2M/MoTeC-CSV-Dateien werden nicht mehr gelesen; `bridge`-Kommando und MoTeC-Parser sind entfernt.
 
