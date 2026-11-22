@@ -7,6 +7,8 @@ from .logdata import read_log, session_from_log
 from .recorder import Recorder, default_recordings_dir
 from .report import finding_dicts, render_json, render_text
 from .rules import Ctx, analyze
+from .setup_sheet import (build_sheet, default_sheets_dir, suggest_filename,
+                          write_sheet)
 from .store import (add_analysis, default_store_path, entry_key, get_entry,
                     list_keys, load, save)
 
@@ -39,6 +41,8 @@ def build_parser():
     _add_store_args(a)
     a.add_argument("--save", action="store_true",
                    help="Analyse unter 'track|layout|vehicle' in setups.json speichern")
+    a.add_argument("--sheet", nargs="?", const="", default=None, metavar="DATEI",
+                   help="Setup-Zettel (Garage-Checkliste) in DATEI schreiben (ohne DATEI: Standardordner mit Vorschlagsname)")
 
     r = sub.add_parser("record", help="Telemetrie aus RaceRoom aufzeichnen (eigener Rekorder, Strg+C beendet)")
     _add_common(r)
@@ -99,6 +103,21 @@ def _run_analyze(args):
         print(render_json(findings, session, lang=args.lang, advice=advice))
     else:
         print(render_text(findings, session, lang=args.lang, advice=advice))
+    if args.sheet is not None:
+        sheet_text = build_sheet(
+            {"track": track, "layout": layout, "vehicle": vehicle},
+            advice, lang=args.lang, key=entry_key(track, layout, vehicle)
+            if track and vehicle else None,
+            log_source=os.path.abspath(args.log))
+        sheet_path = args.sheet
+        if not sheet_path:
+            os.makedirs(default_sheets_dir(), exist_ok=True)
+            sheet_path = os.path.join(
+                default_sheets_dir(),
+                suggest_filename({"track": track, "layout": layout, "vehicle": vehicle},
+                                 lang=args.lang))
+        write_sheet(sheet_path, sheet_text)
+        print(f"Setup-Zettel geschrieben → {sheet_path}")
     if args.save:
         if not track or not vehicle:
             print("Fehler: --save erfordert Strecke und Fahrzeug (im Log vorhanden oder angegeben).", file=sys.stderr)

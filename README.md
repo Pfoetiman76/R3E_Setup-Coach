@@ -39,6 +39,8 @@ r3e-coach record --out "D:\Aufnahmen" --hz 50
 ```bash
 r3e-coach analyze examples/beispiel.coachlog --json
 r3e-coach analyze examples/beispiel.coachlog --save             # Strecke/Fahrzeug aus dem Log
+r3e-coach analyze examples/beispiel.coachlog --sheet zettel.txt # Setup-Zettel als Textdatei
+r3e-coach analyze examples/beispiel.coachlog --sheet            # Standardordner + Dateiname-Vorschlag
 r3e-coach setups --key "Sachsenring|Sachsenring|Audi R8 LMS Ultra 2016"
 r3e-coach times --track "Sachsenring" --vehicle "Audi R8 LMS Ultra 2016"
 r3e-coach update --check
@@ -53,6 +55,8 @@ r3e-coach gui
 Die Oberfläche hat drei Bereiche: **1) Aufzeichnen** (die Aufzeichnung beginnt **automatisch, sobald RaceRoom läuft** — wie in PitBoss genügt das Starten der App; der Haken „Automatisch aufzeichnen" ist standardmäßig gesetzt und wird in der Config gespeichert, der Zielordner ist einstellbar; jede fertige Sitzung wird als `.coachlog` gesichert und automatisch im Reiter 2 eingetragen), **2) Telemetrie analysieren** (Log per Dialog wählen, Strecke/Layout/Fahrzeug füllen sich aus dem Log; der Bericht erscheint im Fenster, mit „Analysieren und speichern" landet die Analyse in der Setup-Sammlung) und **3) Setups** (gespeicherte Setups mit Zielzeit, Best-/Ø-Zeiten aus R3E-Resultate und Detailansicht; Doppelklick öffnet den Eintrag, Zielzeit und Notizen sind editierbar).
 
 **„Empfohlene nächste Schritte“** (ab 0.7.0): Der Bericht endet mit priorisierten, konkreten Hinweisen — z. B. „Stabi vorne: 4 → 3“ statt nur „Untersteuern“. Sind Werte des aktuellen Setups in `setups.json` gespeichert (Fahrwerk/Reifen im Reiter 3), nennt der Coach das konkrete Ziel, sonst eine gerichtete Stufenänderung.
+
+**Setup-Zettel** (ab 0.9.0): Der Knopf „Setup-Zettel …“ im Reiter „Telemetrie analysieren“ erzeugt eine druckfertige Garage-Checkliste je Fahrzeug und Strecke — Fahrzeug/Strecke/Layout, Datum, die priorisierten Einstellungen als abhakbare Punkte und ein Prüfhinweis. Der Zettel wird als `.txt` gespeichert (Ziel per Dialog wählbar, Vorschlagsname aus Strecke/Layout/Fahrzeug). CLI: `analyze --sheet <datei>` (ohne Pfad: `<App-Ordner>\sheets` mit automatischem Namen). Der Zettel ist die verlässliche Alternative zum direkten Schreiben von RaceRoom-`.svm`-Dateien, deren Binärformat undokumentiert ist.
 
 ## Setup-Sammlung (setups.json)
 
