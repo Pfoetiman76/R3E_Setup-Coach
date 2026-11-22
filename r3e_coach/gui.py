@@ -20,6 +20,7 @@ from .recorder import (STATE_MENUS, STATE_PAUSED, STATE_PIT,
                        STATE_RECORDING, STATE_STOPPED, STATE_WAITING,
                        Recorder, default_recordings_dir)
 from .report import finding_dicts, render_text
+from .setup_sheet import build_sheet, suggest_filename, write_sheet
 from .rules import Ctx, analyze
 from .store import (add_analysis, default_store_path, ensure_entry, entry_key,
                     get_entry, list_keys, load, save, upsert_values)
@@ -52,6 +53,9 @@ LABELS = {
         "browse": "Durchsuchen …",
         "run": "Analysieren",
         "run_save": "Analysieren und speichern",
+        "sheet_btn": "Setup-Zettel …",
+        "sheet_saved": "Setup-Zettel gespeichert: {file}",
+        "sheet_need": "Bitte zuerst analysieren: Der Zettel beruht auf der aktuellen Telemetrie-Analyse.",
         "track": "Strecke:",
         "layout": "Layout:",
         "vehicle": "Fahrzeug:",
@@ -105,6 +109,9 @@ LABELS = {
         "browse": "Browse …",
         "run": "Analyze",
         "run_save": "Analyze and save",
+        "sheet_btn": "Setup sheet …",
+        "sheet_saved": "Setup sheet saved: {file}",
+        "sheet_need": "Please analyze first: the sheet is based on the current telemetry analysis.",
         "track": "Track:",
         "layout": "Layout:",
         "vehicle": "Vehicle:",
@@ -277,6 +284,9 @@ class CoachGui(QMainWindow):
         run_save.clicked.connect(self.run_analyze_save)
         row.addWidget(run)
         row.addWidget(run_save)
+        sheet_btn = QPushButton(self.t["sheet_btn"])
+        sheet_btn.clicked.connect(self.make_setup_sheet)
+        row.addWidget(sheet_btn)
         row.addStretch(1)
         lay.addLayout(row)
         self.output = QPlainTextEdit()
@@ -489,10 +499,37 @@ class CoachGui(QMainWindow):
         chassis, tires = self._stored_setup_values()
         advice = build_advice(findings, chassis, tires)
         self._show(render_text(findings, session, lang=self.lang, advice=advice))
-        return {"session": session, "findings": findings}
+        return {"session": session, "findings": findings, "advice": advice}
 
     def run_analyze(self):
         self._analyze_current()
+
+    def make_setup_sheet(self):
+        """0.9.0: Setup-Zettel — Garage-Checkliste aus der aktuellen Analyse."""
+        result = self._analyze_current()
+        if result is None:
+            self._show(self.t["sheet_need"])
+            return
+        meta = {
+            "track": self.track_edit.text().strip() or None,
+            "layout": self.layout_edit.text().strip() or None,
+            "vehicle": self.vehicle_edit.text().strip() or None,
+        }
+        key = None
+        if meta["track"] and meta["vehicle"]:
+            key = entry_key(meta["track"], meta["layout"] or None, meta["vehicle"])
+        text = build_sheet(meta, result["advice"], lang=self.lang, key=key,
+                           log_source=os.path.abspath(self.log_edit.text().strip()))
+        default = os.path.join(self.outdir_edit.text().strip()
+                               or os.path.expanduser("~"),
+                               suggest_filename(meta, lang=self.lang))
+        path, _ = QFileDialog.getSaveFileName(
+            self, self.t["sheet_btn"], default, "Textdatei (*.txt);;Alle Dateien (*.*)")
+        if not path:
+            return
+        write_sheet(path, text)
+        self._show(text)
+        self.status_label.setText(self.t["sheet_saved"].format(file=path))
 
     def run_analyze_save(self):
         result = self._analyze_current()
