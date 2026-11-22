@@ -73,3 +73,17 @@ def test_updater_still_full_asset_list():
     """Guard gegen versehentliche Asset-Umbenennung: Updater findet das Zip."""
     y = _read(".github/workflows/auto-release.yml")
     assert "R3E-Setup-Coach-win.zip" in y
+
+
+def test_auto_release_version_check_is_silent():
+    """0.9.3.2: Tag-Prüfung ohne native stderr-Umleitung.
+
+    GitHub Actions läuft pwsh mit ErrorActionPreference=Stop; die
+    stderr-Ausgabe von 'gh release view' (Release nicht gefunden) bricht
+    mit '2>$null' den Schritt ab. git ls-remote ist stumm.
+    """
+    y = _read(".github/workflows/auto-release.yml")
+    code = "\n".join(l for l in y.splitlines() if not l.lstrip().startswith("#"))
+    assert "git ls-remote" in code
+    assert "gh release view" not in code
+    assert "2>$null" not in code
