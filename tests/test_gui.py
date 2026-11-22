@@ -123,3 +123,14 @@ def test_gui_qt_names_imported():
             if isinstance(n, ast.Name) and re.match(r"^Q[A-Z]", n.id)}
     missing = used - imported
     assert not missing, f"In gui.py fehlende Qt-Importe: {sorted(missing)}"
+
+
+def test_gui_record_tab_rows_separate():
+    """0.9.1 (ohne PySide6): Haken und Start/Stop-Knoepfe in getrennten Zeilen."""
+    src = open(__import__("os").path.join(
+        __import__("os").path.dirname(__import__("os").path.dirname(
+            __import__("os").path.abspath(__file__))), "r3e_coach", "gui.py"),
+        encoding="utf-8").read()
+    assert "grid.addWidget(self.auto_record_check, 2, 0, 1, 3)" in src
+    assert "grid.addLayout(row, 3, 0, 1, 3)" in src
+    assert "grid.addLayout(row, 2, 0, 1, 3)" not in src

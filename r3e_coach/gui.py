@@ -250,7 +250,7 @@ class CoachGui(QMainWindow):
         row.addWidget(self.rec_start_btn)
         row.addWidget(self.rec_stop_btn)
         row.addStretch(1)
-        grid.addLayout(row, 2, 0, 1, 3)
+        grid.addLayout(row, 3, 0, 1, 3)  # 0.9.1: eigene Zeile 3 — 0.8.1 legte Knöpfe und Haken beide auf Zeile 2 (Überdeckung)
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.addWidget(box)

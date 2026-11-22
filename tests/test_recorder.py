@@ -152,3 +152,17 @@ def test_status_dict_shape(tmp_path):
                 "error", "warning"):
         assert key in st
     assert st["state"] != STATE_RECORDING
+
+
+def test_missing_memory_waits_without_error(tmp_path):
+    """0.9.1: RaceRoom läuft nicht -> Zustand WAITING ohne 'Fehler'-Meldung."""
+    def open_missing():
+        raise FileNotFoundError('RaceRoom-Shared-Memory "$R3E" nicht gefunden')
+
+    rec = Recorder(out_dir=str(tmp_path), open_memory=open_missing,
+                   sleep=lambda s: None)
+    frame = rec._read()
+    st = rec.status()
+    assert frame is None
+    assert st["state"] == STATE_WAITING
+    assert st["error"] is None
