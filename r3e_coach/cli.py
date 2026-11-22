@@ -3,8 +3,8 @@ import os
 import sys
 
 from .advice import build_advice
-from .bridge import BridgeError, find_config, load_config, resolve_args, resolve_exe, run_bridge
-from .parser import parse_motec_csv
+from .logdata import read_log, session_from_log
+from .recorder import Recorder, default_recordings_dir
 from .report import finding_dicts, render_json, render_text
 from .rules import Ctx, analyze
 from .store import (add_analysis, default_store_path, entry_key, get_entry,
@@ -18,40 +18,39 @@ def _add_common(p):
 
 def _add_store_args(p):
     p.add_argument("--store", help="Pfad zur setups.json (Standard: Anwendungsordner)")
-    p.add_argument("--track", help="Streckenname (unverändert aus RaceRoom-Ergebnisdaten)")
-    p.add_argument("--layout", help="Layout-Name (Standard: wie Strecke, falls RaceRoom kein eigenes Layout nennt)")
-    p.add_argument("--vehicle", help="Fahrzeugname (unverändert aus RaceRoom-Ergebnisdaten)")
+    p.add_argument("--track", help="Streckenname (Standard: automatisch aus dem Log)")
+    p.add_argument("--layout", help="Layout-Name (Standard: automatisch aus dem Log bzw. wie Strecke)")
+    p.add_argument("--vehicle", help="Fahrzeugname (Standard: automatisch aus dem Log)")
 
 
 def build_parser():
     p = argparse.ArgumentParser(
         prog="r3e-coach",
-        description="R3E Setup-Coach: MoTeC-i2-CSV analysieren, Setups verwalten und/oder Bridge-Exe (RaceRoom → MoTeC) steuern.",
+        description="R3E Setup-Coach: Telemetrie aus RaceRoom aufzeichnen (eigener Rekorder), analysieren und Setups verwalten.",
     )
     sub = p.add_subparsers(dest="command")
 
-    a = sub.add_parser("analyze", help="MoTeC-i2-CSV analysieren (Standard, wenn nur eine Datei übergeben wird)")
+    a = sub.add_parser("analyze", help="Aufgezeichnete Coach-Logdatei analysieren (Standard, wenn nur eine Datei übergeben wird)")
     _add_common(a)
-    a.add_argument("csv", help="Pfad zum MoTeC-i2-CSV-Export")
+    a.add_argument("log", help="Pfad zur .coachlog-Aufzeichnung")
     a.add_argument("--min-speed", type=float, default=40.0,
                    help="Mindestgeschwindigkeit in km/h für relevante Fahrmanöver (Standard: 40)")
     a.add_argument("--json", action="store_true", help="Ausgabe als JSON statt Text")
     _add_store_args(a)
     a.add_argument("--save", action="store_true",
-                   help="Analyse unter 'track|layout|vehicle' in setups.json speichern (erfordert --track und --vehicle)")
+                   help="Analyse unter 'track|layout|vehicle' in setups.json speichern")
+
+    r = sub.add_parser("record", help="Telemetrie aus RaceRoom aufzeichnen (eigener Rekorder, Strg+C beendet)")
+    _add_common(r)
+    r.add_argument("--hz", type=float, default=50.0, help="Abtastrate in Hz (Standard: 50)")
+    r.add_argument("--out", help="Zielordner für .coachlog-Dateien (Standard: Dokumente\\R3E Setup-Coach\\recordings)")
+    r.add_argument("--wait", action="store_true", help="Auf RaceRoom warten und automatisch mit der Aufzeichnung beginnen")
 
     s = sub.add_parser("setups", help="Gespeicherte Setups auflisten (setups.json)")
     _add_common(s)
     _add_store_args(s)
     s.add_argument("--key", help="Nur diesen Eintrag zeigen (Format 'track|layout|vehicle')")
     s.add_argument("--json", action="store_true", help="Ausgabe als JSON")
-
-    b = sub.add_parser("bridge", help="Bridge-Exe starten, das RaceRoom-Daten an MoTeC liefert, und per Strg+C stoppen")
-    _add_common(b)
-    b.add_argument("--exe", help="Pfad zur Bridge-Exe (oder \"bridge_exe\" in der Config)")
-    b.add_argument("--cwd", help="Arbeitsverzeichnis für die Bridge (oder \"bridge_cwd\" in der Config)")
-    b.add_argument("--args", nargs=argparse.REMAINDER,
-                   help="Argumente für die Bridge, z. B. --args -- --port 5566")
 
     g = sub.add_parser("gui", help="Grafische Oberfläche starten (PySide6)")
     _add_common(g)
@@ -85,30 +84,73 @@ def _stored_values(args):
 
 
 def _run_analyze(args):
-    session = parse_motec_csv(args.csv)
+    session = session_from_log(args.log)
     findings = analyze(session, Ctx(min_speed=args.min_speed))
-    # 0.7.0: konkrete priorisierte Hinweise; mit --track/--vehicle fließen
-    # die gespeicherten Werte aus setups.json ein (konkrete Ziele statt Stufen).
-    chassis, tires = _stored_values(args)
+    # Strecke/Fahrzeug: automatisch aus dem Log (Meta), außer überschrieben.
+    meta, _, _, _ = read_log(args.log)
+    track = args.track or (meta.get("track") or "").strip() or None
+    vehicle = args.vehicle or (meta.get("vehicle") or "").strip() or None
+    layout = args.layout or (meta.get("layout") or "").strip() or None
+    _args_probe = argparse.Namespace(track=track, vehicle=vehicle, layout=layout,
+                                     store=getattr(args, "store", None))
+    chassis, tires = _stored_values(_args_probe)
     advice = build_advice(findings, chassis, tires)
     if args.json:
         print(render_json(findings, session, lang=args.lang, advice=advice))
     else:
         print(render_text(findings, session, lang=args.lang, advice=advice))
     if args.save:
-        if not args.track or not args.vehicle:
-            print("Fehler: --save erfordert --track und --vehicle (und optional --layout).", file=sys.stderr)
+        if not track or not vehicle:
+            print("Fehler: --save erfordert Strecke und Fahrzeug (im Log vorhanden oder angegeben).", file=sys.stderr)
             return 2
-        key = entry_key(args.track, args.layout, args.vehicle)
+        key = entry_key(track, layout, vehicle)
         store_path = args.store or default_store_path()
         data = load(store_path)
         record = add_analysis(data, key, {
-            "csv_source": os.path.abspath(args.csv),
+            "log_source": os.path.abspath(args.log),
             "samples": len(session),
             "findings": finding_dicts(findings),
         })
         save(data, store_path)
         print(f"Gespeichert unter '{key}' ({len(record['findings'])} Fundstellen) → {store_path}")
+    return 0
+
+
+def _run_record(args):
+    import threading
+    import time as _time
+
+    rec = Recorder(out_dir=args.out or default_recordings_dir(), hz=args.hz)
+    print(f"Aufzeichnung startet ({args.hz:g} Hz) — Strg+C beendet und speichert.")
+    print(f"Zielordner: {rec.out_dir}")
+    thread = threading.Thread(target=rec.run, daemon=True)
+    thread.start()
+    last_state = None
+    try:
+        while thread.is_alive():
+            _time.sleep(0.5)
+            st = rec.status()
+            if st["state"] != last_state:
+                last_state = st["state"]
+                if st["state"] == "recording":
+                    print(f" » Aufzeichnung läuft: {st['meta'].get('track')} — "
+                          f"{st['meta'].get('vehicle')}")
+                elif st["state"] == "waiting":
+                    print(" » Warte auf RaceRoom …")
+                else:
+                    print(f" » Status: {st['state']}")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        rec.stop()
+        thread.join(timeout=5)
+        st = rec.status()
+        for path in st["files"]:
+            print(f"Gespeichert: {path}")
+        if not st["files"]:
+            print("Keine Aufzeichnung erstellt (RaceRoom lief nicht oder keine Session auf der Strecke).")
+        if st["error"]:
+            print(f"Hinweis: {st['error']}", file=sys.stderr)
     return 0
 
 
@@ -165,7 +207,7 @@ def _print_entry(key, entry, store_path):
         stamp = a.get("analyzed_at") or "?"
         applied = a.get("applied")
         state = {True: "umgesetzt", False: "verworfen", None: "offen"}[applied]
-        print(f"  Analyse {i} ({stamp}, {a.get('samples', '?')} Samples, {state}): {a.get('csv_source', '?')}")
+        print(f"  Analyse {i} ({stamp}, {a.get('samples', '?')} Samples, {state}): {a.get('log_source', a.get('csv_source', '?'))}")
         for f in a.get("findings", []):
             print(f"    [{f.get('severity', '?').upper()}] {f.get('text', '')}")
     for h in entry.get("history", []):
@@ -215,28 +257,15 @@ def _run_times(args):
     return 0
 
 
-def _run_bridge(args):
-    config = {}
-    cfg_path = find_config(args.config)
-    if cfg_path:
-        config = load_config(cfg_path)
-    exe = resolve_exe(args.exe, config)
-    bridge_args = resolve_args(args.args, config)
-    cwd = args.cwd or config.get("bridge_cwd")
-    if cwd and not os.path.isdir(cwd):
-        raise BridgeError(f"Arbeitsverzeichnis existiert nicht: {cwd}")
-    return run_bridge(exe, bridge_args, cwd=cwd, lang=args.lang)
-
-
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("analyze", "setups", "bridge", "gui", "update", "times"):
+    if argv and argv[0] in ("analyze", "record", "setups", "gui", "update", "times"):
         args = build_parser().parse_args(argv)
     else:
         args = build_parser().parse_args(["analyze", *argv])
     try:
-        if args.command == "bridge":
-            return _run_bridge(args)
+        if args.command == "record":
+            return _run_record(args)
         if args.command == "setups":
             return _run_setups(args)
         if args.command == "gui":
@@ -249,9 +278,9 @@ def main(argv=None):
         if args.command == "times":
             return _run_times(args)
         return _run_analyze(args)
-    except BridgeError as exc:
-        print(f"Fehler: {exc}", file=sys.stderr)
-        return 2
     except FileNotFoundError as exc:
         print(f"Fehler: Datei nicht gefunden: {exc.filename or exc}", file=sys.stderr)
-        return 
+        return 2
+    except ValueError as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
+        return 2

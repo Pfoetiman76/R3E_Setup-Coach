@@ -20,4 +20,4 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install pytest
       - run: python -m pytest -q
-      - run: python -m r3e_coach examples/beispiel_motec_i2.csv --json > /dev/null
+      - run: python -m r3e_coach examples/beispiel.coachlog --json > /dev/null

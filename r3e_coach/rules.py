@@ -276,4 +276,4 @@ def analyze(session, ctx=None):
     for rule in RULES:
         findings.extend(rule(session, ctx))
     findings.sort(key=lambda f: SEVERITY_ORDER.get(f.severity, 3))
-    return finding
+    return findings

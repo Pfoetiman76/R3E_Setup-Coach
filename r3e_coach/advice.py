@@ -215,4 +215,4 @@ def advice_dicts(advice, lang="de"):
 def render_lines(advice, lang="de"):
     """Nummerierte Zeilen (ohne Kopfzeile) für Bericht/GUI."""
     return [f"{i}) {a['text'].get(lang, a['text'].get('de', ''))}"
-            for i, a in enumerate(advice, 1)
+            for i, a in enumerate(advice, 1)]
