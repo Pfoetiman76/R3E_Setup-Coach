@@ -1,11 +1,12 @@
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon
-from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QFileDialog, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QPlainTextEdit, QPushButton,
                                QTableWidget, QTableWidgetItem, QTabWidget,
@@ -54,6 +55,9 @@ LABELS = {
         "running": "Bridge läuft (PID {pid}) — fahren, dann stoppen.",
         "stopped": "Bridge beendet.",
         "exited": "Bridge hat sich selbst beendet (Exit {rc}).",
+        "auto_restart": "Bridge automatisch neu starten (z. B. nach ESC/Session-Wechsel)",
+        "restarted": "Bridge beendet (Exit {rc}) — startet automatisch neu …",
+        "restart_off": "Automatischer Neustart ausgeschaltet: Bridge beendet sich zu schnell hintereinander.",
         "need_csv": "Bitte CSV-Datei auswählen.",
         "need_key": "Bitte Strecke und Fahrzeug angeben, um die Analyse zu speichern.",
         "saved": "Analyse gespeichert unter '{key}'.",
@@ -99,6 +103,9 @@ LABELS = {
         "running": "Bridge running (PID {pid}) — drive, then stop.",
         "stopped": "Bridge stopped.",
         "exited": "Bridge exited on its own (exit {rc}).",
+        "auto_restart": "Restart bridge automatically (e.g. after ESC/session change)",
+        "restarted": "Bridge exited (exit {rc}) — restarting automatically …",
+        "restart_off": "Automatic restart turned off: bridge exits too quickly in a row.",
         "need_csv": "Please pick a CSV file.",
         "need_key": "Please provide track and vehicle to save the analysis.",
         "saved": "Analysis saved under '{key}'.",
@@ -168,6 +175,11 @@ class CoachGui(QMainWindow):
         self.lang = lang
         self.t = LABELS[lang]
         self.bridge = None
+        # 0.6.5: Automatischer Neustart der Bridge (R2M beendet sich bei
+        # ESC/Session-Wechsel selbst) statt einmaligem Aus.
+        self._bridge_user_stopped = False
+        self._bridge_fast_fails = 0
+        self._bridge_started_ts = 0.0
         self.bridge_poll = QTimer(self)
         self.bridge_poll.setInterval(500)
         self.bridge_poll.timeout.connect(self._poll_bridge)
@@ -211,6 +223,12 @@ class CoachGui(QMainWindow):
         row.addWidget(self.stop_btn)
         row.addStretch(1)
         grid.addLayout(row, 1, 0, 1, 2)
+        # 0.6.5: Haken fuer automatischen Neustart (Standard an), persistiert
+        # als "bridge_auto_restart" in der Config.
+        self.restart_check = QCheckBox(self.t["auto_restart"])
+        self.restart_check.setChecked(bool(self.config.get("bridge_auto_restart", True)))
+        self.restart_check.toggled.connect(self._persist_auto_restart)
+        grid.addWidget(self.restart_check, 2, 0, 1, 2)
         page = QWidget()
         lay = QVBoxLayout(page)
         lay.addWidget(box)
@@ -315,6 +333,24 @@ class CoachGui(QMainWindow):
         except Exception:
             pass
 
+    def _persist_auto_restart(self, checked):
+        """0.6.5: Haken 'automatisch neu starten' dauerhaft merken."""
+        try:
+            path = self._config_path or default_config_path()
+            try:
+                data = load_config(path)
+            except (OSError, BridgeError):
+                data = {}
+            if data.get("bridge_auto_restart") is bool(checked):
+                self.config = data if data else self.config
+                return
+            data["bridge_auto_restart"] = bool(checked)
+            save_config(path, data)
+            self.config = data
+            self._config_path = path
+        except Exception:
+            pass
+
     def start_bridge(self):
         try:
             exe = resolve_exe(self.exe_edit.text().strip() or None, self.config)
@@ -325,6 +361,9 @@ class CoachGui(QMainWindow):
             return
         self.bridge = BridgeProcess(exe, args, cwd=cwd)
         self.bridge.start()
+        self._bridge_user_stopped = False  # 0.6.5: frischer Start
+        self._bridge_fast_fails = 0
+        self._bridge_started_ts = time.monotonic()
         self._persist_bridge_exe(self.exe_edit.text().strip())
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
@@ -337,12 +376,44 @@ class CoachGui(QMainWindow):
             return
         if self.bridge.is_running():
             return
+        rc = self.bridge.proc.returncode
+        # 0.6.5: Wurde die Bridge vom Nutzer gestoppt, bleibt es beim alten
+        # Verhalten (einmal beendet, Start-Knopf wieder frei).
+        if getattr(self, "_bridge_user_stopped", False):
+            self._bridge_exited_final(rc)
+            return
+        # 0.6.5: Automatismus - R2M beendet sich selbst bei ESC/Session-Wechsel
+        # und wird sofort wieder gestartet. Beendet sich die Exe wiederholt
+        # binnen weniger Sekunden, greift eine Sicherung, die den Neustart
+        # stoppt (kein Endlos-Neustart bei kaputter Exe).
+        if self.restart_check.isChecked():
+            uptime = time.monotonic() - getattr(self, "_bridge_started_ts", 0.0)
+            if uptime < 5.0:
+                self._bridge_fast_fails += 1
+            else:
+                self._bridge_fast_fails = 0
+            if self._bridge_fast_fails >= 5:
+                self._set_status("restart_off")
+                self._bridge_exited_final(rc)
+                return
+            try:
+                self._set_status("restarted", rc=rc)
+                self.bridge.start()
+                self._bridge_started_ts = time.monotonic()
+                self._set_status("running", pid=self.bridge.proc.pid)
+                return
+            except Exception:
+                pass
+        self._bridge_exited_final(rc)
+
+    def _bridge_exited_final(self, rc):
         self.bridge_poll.stop()
-        self._set_status("exited", rc=self.bridge.proc.returncode)
+        self._set_status("exited", rc=rc)
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
 
     def stop_bridge(self):
+        self._bridge_user_stopped = True  # 0.6.5: kein automatischer Neustart nach Stop-Knopf
         if self.bridge is not None:
             self.bridge.stop()
         self._set_status("stopped")
