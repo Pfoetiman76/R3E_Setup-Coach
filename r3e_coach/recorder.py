@@ -24,6 +24,8 @@ STATE_PAUSED = "paused"            # Spiel pausiert
 STATE_PIT = "pit"                  # Spieler in der Boxengasse
 STATE_RECORDING = "recording"      # Aufzeichnung läuft
 
+DIAG_FILENAME = "coach-diagnose.txt"  # 0.9.2: Diagnose-Protokoll im Zielordner
+
 COLUMNS = (
     "time", "lap_time", "speed", "throttle", "brake", "steer", "g_lat", "g_long",
     "susp_travel_fl", "susp_travel_fr", "susp_travel_rl", "susp_travel_rr",
@@ -94,6 +96,10 @@ class Recorder:
         self._lock = threading.Lock()
         self.memory = None
         self.state = STATE_STOPPED
+        # 0.9.2: Diagnose-Protokoll (coach-diagnose.txt im Zielordner) —
+        # rekonstruiert Ablaeufe, die im VR-Headset unsichtbar bleiben.
+        self.diag_fh = None
+        self._shm_fail_logged = False
         self.samples = 0
         self.current_file = None
         self.files = []
@@ -124,9 +130,25 @@ class Recorder:
 
     # ---------- Aufzeichnung ----------
 
+    def _diagnose(self, event):
+        """0.9.2: Ereignis mit Uhrzeit in coach-diagnose.txt (Fehler still)."""
+        try:
+            if self.diag_fh is None:
+                os.makedirs(self.out_dir, exist_ok=True)
+                self.diag_fh = open(os.path.join(self.out_dir, DIAG_FILENAME),
+                                    "a", encoding="utf-8")
+            self.diag_fh.write(
+                f"{datetime.now().isoformat(timespec='seconds')} {event}\n")
+            self.diag_fh.flush()
+        except Exception:
+            pass
+
     def _set_state(self, state):
         with self._lock:
-            self.state = state
+            if state == self.state:
+                return
+            prev, self.state = self.state, state
+        self._diagnose(f"ZUSTAND {prev} -> {state}")
 
     def _flush(self):
         """Schreibt die gesammelten Zeilen in die aktuelle Datei."""
@@ -139,6 +161,7 @@ class Recorder:
             self.current_file = None
         if path and rows:
             write_log(path, meta, list(COLUMNS), list(UNITS), rows)
+            self._diagnose(f"DATEI GESCHRIEBEN {os.path.basename(path)} ({len(rows)} Samples)")
             with self._lock:
                 self.files.append(path)
 
@@ -160,12 +183,14 @@ class Recorder:
             self._session_key = (track, layout, vehicle, frame.session_type)
             self._rows = []
             self._t0 = None  # Zeitachse pro Sitzung neu starten
+        self._diagnose(f"SITZUNG NEU — {fname}")
         return path
 
     def run(self):
         """Blockierende Schleife (im eigenen Thread ausführen)."""
         dt = 1.0 / max(1.0, self.hz)
         next_t = time.monotonic()
+        self._diagnose(f"AUFZEICHNUNG GESTARTET ({self.hz:g} Hz, Zielordner {self.out_dir})")
         try:
             while not self._stop_event.is_set():
                 frame = self._read()
@@ -182,19 +207,34 @@ class Recorder:
                 self.memory.close()
                 self.memory = None
             self._set_state(STATE_STOPPED)
+            try:
+                self._diagnose("AUFZEICHNUNG BEENDET")
+                if self.diag_fh is not None:
+                    self.diag_fh.close()
+                    self.diag_fh = None
+            except Exception:
+                pass
 
     def _read(self):
         """Liefert den nächsten Frame; öffnet den Shared Memory bei Bedarf."""
         if self.memory is None:
             try:
                 self.memory = self._open_memory()
+                self._shm_fail_logged = False
+                self._diagnose("SHM GEÖFFNET — RaceRoom-Schnittstelle gefunden")
             except FileNotFoundError:
                 # 0.9.1: Spiel läuft schlicht nicht — normales Warten statt
                 # irreführender "Fehler"-Meldung in der Statusleiste.
+                if not self._shm_fail_logged:
+                    self._diagnose("SHM NICHT GEFUNDEN — warte auf RaceRoom")
+                    self._shm_fail_logged = True
                 self._set_state(STATE_WAITING)
                 self._sleep(0.5)
                 return None
             except OSError as exc:
+                if not self._shm_fail_logged:
+                    self._diagnose(f"SHM FEHLER — {exc}")
+                    self._shm_fail_logged = True
                 self.error = str(exc)
                 self._set_state(STATE_WAITING)
                 self._sleep(0.5)

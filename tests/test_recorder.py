@@ -4,6 +4,7 @@ Fake-Shared-Memory: Sequenz von R3EMemory(mem=build_buffer(...))-Puffern.
 """
 
 import threading
+import time
 
 import pytest
 
@@ -132,11 +133,12 @@ def test_run_loop_writes_file_on_stop(tmp_path):
                    open_memory=opener, sleep=lambda s: None)
     t = threading.Thread(target=rec.run, daemon=True)
     t.start()
-    for _ in range(200):
-        if rec.state in (STATE_MENUS, STATE_RECORDING) and rec.files:
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        st = rec.status()
+        if st["files"] and st["state"] in (STATE_MENUS, STATE_RECORDING):
             break
-        if rec.state == STATE_MENUS:
-            break
+        time.sleep(0.01)
     rec.stop()
     t.join(timeout=5)
     assert rec.files, "mindestens eine Datei nach Menü/Stop"
@@ -166,3 +168,35 @@ def test_missing_memory_waits_without_error(tmp_path):
     assert frame is None
     assert st["state"] == STATE_WAITING
     assert st["error"] is None
+
+
+def test_diagnose_log_written(tmp_path):
+    """0.9.2: coach-diagnose.txt protokolliert Ereignisse ohne Spam."""
+    def open_missing():
+        raise FileNotFoundError("kein Spiel")
+
+    rec = Recorder(out_dir=str(tmp_path), open_memory=open_missing,
+                   sleep=lambda s: None)
+    rec._diagnose("TEST A")
+    rec._read()   # WAITING + einmalig 'SHM NICHT GEFUNDEN'
+    rec._read()   # keine zweite Meldung
+    text = (tmp_path / "coach-diagnose.txt").read_text(encoding="utf-8")
+    assert "TEST A" in text
+    assert text.count("SHM NICHT GEFUNDEN") == 1
+    assert "ZUSTAND stopped -> waiting" in text
+
+
+def test_diagnose_logs_session_file(tmp_path):
+    """0.9.2: Sitzung und geschriebene Datei erscheinen im Protokoll."""
+    buffers = [_buffer(track="Sachsenring", vehicle="Audi R8") for _ in range(5)]
+    rec = Recorder(out_dir=str(tmp_path),
+                   open_memory=FakeMemory.opener(buffers),
+                   sleep=lambda s: None)
+    rec.memory = rec._open_memory()
+    rec._new_session(rec.memory.read_frame())
+    for _ in range(3):
+        rec._handle(rec.memory.read_frame())
+    rec._flush()
+    text = (tmp_path / "coach-diagnose.txt").read_text(encoding="utf-8")
+    assert "SITZUNG NEU" in text
+    assert "DATEI GESCHRIEBEN" in text
