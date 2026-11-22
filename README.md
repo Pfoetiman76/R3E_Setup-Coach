@@ -85,7 +85,11 @@ r3e-coach times --track Sachsenring      # Best/Ø für eine Kombination
 
 ## Auto-Update (ab 0.6.0)
 
-Der Knopf „Update installieren“ in der Statusleiste lädt das neueste GitHub-Release, prüft die Version, legt das Update im Staging-Ordner `<App-Ordner>.update` ab, startet `apply-update.cmd` und beendet sich. Konfiguration, Setup-Sammlung und Marker-Dateien bleiben erhalten; die Exe wird durch Umbenennen ersetzt und beim nächsten Start aufgeräumt. Der Fenstertitel zeigt die aktive Version.
+Der Knopf „Update installieren“ in der Statusleiste lädt das neueste GitHub-Release, prüft die Version, legt das Update im Staging-Ordner `<App-Ordner>.update` ab, startet `apply-update.cmd` und beendet sich. Konfiguration, Setup-Sammlung und Marker-Dateien bleiben erhalten (ab 0.9.3 zusätzlich per `%TEMP%`-Sicherung abgesichert); die Exe wird durch Umbenennen ersetzt und beim nächsten Start aufgeräumt. Der Fenstertitel zeigt die aktive Version.
+
+## Veröffentlichung (ab 0.9.3.1 vollautomatisch)
+
+Versionen sind vierstellig (`vx.y.z.w`, fortlaufender Build-Zähler). Sobald `main` eine Version aus `pyproject.toml` enthält, für die es noch kein Release gibt, baut der Workflow `auto-release` die Assets selbst und legt Tag **und** Release automatisch an. Ein manueller Schritt ist nicht mehr nötig; die Inbetriebnahme beschränkt sich darauf, die Versionsnummer an den drei Stellen (`pyproject.toml`, `r3e_coach/__init__.py`, `installer/setup.iss`) zu erhöhen und auf `main` zu mergen.
 
 ## Komponenten
 

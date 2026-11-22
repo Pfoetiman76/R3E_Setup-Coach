@@ -1,0 +1,72 @@
+name: auto-release
+
+# 0.9.3.1: Vollautomatischer Release-Kanal "wie bei PitBoss" vereinfacht:
+# Sobald main eine Version enthaelt, fuer die es noch kein Release gibt,
+# baut dieser Workflow die Assets selbst und legt Tag + Release mit
+# vX.Y.Z.W an. Keine manuellen Klicks mehr noetig.
+# (Ein vom Workflow angelegter Tag startet KEINE weiteren Workflows —
+# deshalb baut dieser Job die Assets selbst statt release.yml zu triggern.)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Version ermitteln; Release-Schritt nur wenn Tag fehlt
+        id: ver
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $v = python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
+          Write-Host "Version im Code: $v"
+          $exists = "false"
+          gh release view "v$v" 2>$null
+          if ($LASTEXITCODE -eq 0) { $exists = "true" }
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+          echo "exists=$exists" >> $env:GITHUB_OUTPUT
+          Write-Host "Release v$v existiert bereits: $exists"
+      - name: Abhaengigkeiten installieren
+        if: steps.ver.outputs.exists == 'false'
+        run: pip install .[exe]
+      - name: Icon erzeugen
+        if: steps.ver.outputs.exists == 'false'
+        run: python tools/gen_icon.py
+      - name: App bauen (PyInstaller onedir)
+        if: steps.ver.outputs.exists == 'false'
+        run: pyinstaller --onedir --windowed --noupx --icon assets/app.ico --add-data "assets/app.ico;." --add-data "assets/app.png;." --name "R3E-Setup-Coach" r3e-coach-gui.py
+      - name: SHA256 der Exe
+        if: steps.ver.outputs.exists == 'false'
+        run: powershell "(Get-FileHash dist\R3E-Setup-Coach\R3E-Setup-Coach.exe -Algorithm SHA256).Hash | Out-File dist\R3E-Setup-Coach\SHA256.txt -Encoding ascii"
+      - name: Zipbundle schnueren
+        if: steps.ver.outputs.exists == 'false'
+        run: powershell "Compress-Archive -Path dist\R3E-Setup-Coach\* -DestinationPath dist\R3E-Setup-Coach-win.zip -Force"
+      - name: Inno Setup installieren
+        if: steps.ver.outputs.exists == 'false'
+        run: choco install innosetup -y
+      - name: Installer bauen
+        if: steps.ver.outputs.exists == 'false'
+        run: powershell -File installer\build-installer.ps1
+      - name: Installer einsammeln
+        if: steps.ver.outputs.exists == 'false'
+        run: powershell -File installer\collect-setup.ps1
+      - name: Tag und Release v${{ steps.ver.outputs.version }} automatisch anlegen
+        if: steps.ver.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: R3E Setup-Coach ${{ steps.ver.outputs.version }}
+          files: |
+            dist/R3E-Setup-Coach-win.zip
+            dist/R3E-Setup-Coach/SHA256.txt
+            dist/R3E-Setup-Coach-Setup.exe
+            dist/SHA256-Setup.txt
