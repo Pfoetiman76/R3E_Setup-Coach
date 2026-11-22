@@ -411,6 +411,7 @@ class R3EMemory:
         self._name = name
         self._map = None
         self._mem = mem
+        self.tag_used = None
         if mem is None:
             self._open()
 
@@ -431,10 +432,14 @@ class R3EMemory:
     def _open(self):
         if os.name != "nt":
             raise OSError("R3E-Shared-Memory ist nur unter Windows verfügbar")
-        for tag in (f"Local\\{self._name}", self._name):
+        # 0.9.3: Drei Namensräume probieren. Manche Windows-Setups (Spiel
+        # oder Steam erhöht gestartet, andere Nutzersitzung) legen das
+        # Mapping statt in der lokalen Sitzung im globalen Namensraum ab.
+        for tag in (f"Local\\{self._name}", self._name, f"Global\\{self._name}"):
             try:
                 self._map = mmap.mmap(0, 0, tag)
                 self._size = min(len(self._map), 4 * 1024 * 1024)
+                self.tag_used = tag
                 return
             except (FileNotFoundError, OSError):
                 continue

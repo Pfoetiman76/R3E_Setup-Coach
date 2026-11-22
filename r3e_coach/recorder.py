@@ -221,7 +221,10 @@ class Recorder:
             try:
                 self.memory = self._open_memory()
                 self._shm_fail_logged = False
-                self._diagnose("SHM GEÖFFNET — RaceRoom-Schnittstelle gefunden")
+                # 0.9.3: Weg (Namensraum) mitloggen, über den das Mapping
+                # gefunden wurde — erleichtert die Ferndiagnose.
+                tag = getattr(self.memory, "tag_used", None) or "unbekannt"
+                self._diagnose(f"SHM GEÖFFNET — RaceRoom-Schnittstelle gefunden (Mapping: {tag})")
             except FileNotFoundError:
                 # 0.9.1: Spiel läuft schlicht nicht — normales Warten statt
                 # irreführender "Fehler"-Meldung in der Statusleiste.
