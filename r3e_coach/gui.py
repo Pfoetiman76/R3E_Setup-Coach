@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QFileDialog, QGridLayout
                                QTableWidget, QTableWidgetItem, QTabWidget,
                                QVBoxLayout, QWidget)
 
+from .advice import build_advice
 from .bridge import (BridgeError, BridgeProcess, default_config_path, find_config,
                      load_config, resolve_args, resolve_exe, save_config)
 from . import __version__
@@ -19,7 +20,8 @@ from .parser import parse_motec_csv
 from .queries import connect as db_connect, lap_stats
 from .report import finding_dicts, render_text
 from .rules import Ctx, analyze
-from .store import add_analysis, ensure_entry, list_keys, load, save, upsert_values
+from .store import (add_analysis, default_store_path, ensure_entry, entry_key,
+                    get_entry, list_keys, load, save, upsert_values)
 from .theme import apply_theme
 from .updater import (_start_swap, check_for_update, prepare_update)
 
@@ -428,6 +430,21 @@ class CoachGui(QMainWindow):
         if path:
             self.csv_edit.setText(path)
 
+    def _stored_setup_values(self):
+        """0.7.0: gespeicherte Setup-Werte, wenn Strecke+Auto im Reiter stehen."""
+        track = self.track_edit.text().strip()
+        vehicle = self.vehicle_edit.text().strip()
+        if not track or not vehicle:
+            return None, None
+        try:
+            key = entry_key(track, self.layout_edit.text().strip() or None, vehicle)
+            entry = get_entry(load(default_store_path()), key)
+        except (OSError, ValueError):
+            return None, None
+        if not entry:
+            return None, None
+        return entry.get("chassis") or None, entry.get("tires") or None
+
     def _analyze_current(self):
         path = self.csv_edit.text().strip()
         if not path:
@@ -435,7 +452,11 @@ class CoachGui(QMainWindow):
             return None
         session = parse_motec_csv(path)
         findings = analyze(session, Ctx())
-        self._show(render_text(findings, session, lang=self.lang))
+        # 0.7.0: konkrete priorisierte Hinweise; gespeicherte Setup-Werte
+        # (Strecke+Auto angegeben) ergeben Zielwerte statt Stufenangaben.
+        chassis, tires = self._stored_setup_values()
+        advice = build_advice(findings, chassis, tires)
+        self._show(render_text(findings, session, lang=self.lang, advice=advice))
         return {"session": session, "findings": findings}
 
     def run_analyze(self):
@@ -450,7 +471,6 @@ class CoachGui(QMainWindow):
         if not track or not vehicle:
             self._show(self.t["need_key"])
             return
-        from .store import default_store_path, entry_key
         key = entry_key(track, self.layout_edit.text().strip() or None, vehicle)
         data = load()
         add_analysis(data, key, {
@@ -465,7 +485,6 @@ class CoachGui(QMainWindow):
     # ---------- Setups ----------
 
     def reload_setups(self):
-        from .store import default_store_path
         data = load(default_store_path())
         keys = list_keys(data)
         self.setups_table.setRowCount(0)
@@ -507,7 +526,6 @@ class CoachGui(QMainWindow):
 
     def _show_setup_detail(self, item):
         import json as _json
-        from .store import default_store_path
         row = item.row()
         key_item = self.setups_table.item(row, 0)
         if key_item is None or "|" not in key_item.text():
@@ -523,7 +541,6 @@ class CoachGui(QMainWindow):
         self.detail_view.setPlainText(_json.dumps({key: entry}, ensure_ascii=False, indent=2))
 
     def apply_setup_values(self):
-        from .store import default_store_path, entry_key
         row = self.setups_table.currentRow()
         key_item = self.setups_table.item(row, 0) if row >= 0 else None
         if key_item is None or "|" not in key_item.text():
@@ -597,4 +614,4 @@ def main_gui(lang="de"):
     window = CoachGui(lang=lang)
     window.show()
     window.reload_setups()
-    sys.exit(app.exec())
+    sys.exit(app.exec()
