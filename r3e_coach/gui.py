@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon
-from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QFileDialog, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QPlainTextEdit, QPushButton,
                                QTableWidget, QTableWidgetItem, QTabWidget,
@@ -45,6 +45,8 @@ LABELS = {
         "rec_state_recording": "Aufzeichnung läuft: {track} — {vehicle} ({samples} Samples)",
         "rec_saved": "Gespeichert: {file}",
         "rec_error": "Fehler bei der Aufzeichnung: {err}",
+        "auto_record": "Automatisch aufzeichnen, sobald RaceRoom läuft (Start-Knopf entfällt)",
+        "auto_started": "Automatische Aufzeichnung aktiv — warte auf RaceRoom …",
         "analyze": "Telemetrie analysieren und speichern",
         "log": "Aufzeichnung (.coachlog):",
         "browse": "Durchsuchen …",
@@ -96,6 +98,8 @@ LABELS = {
         "rec_state_recording": "Recording: {track} — {vehicle} ({samples} samples)",
         "rec_saved": "Saved: {file}",
         "rec_error": "Recording error: {err}",
+        "auto_record": "Record automatically as soon as RaceRoom runs (no start button needed)",
+        "auto_started": "Automatic recording active — waiting for RaceRoom …",
         "analyze": "Analyze telemetry and save",
         "log": "Recording (.coachlog):",
         "browse": "Browse …",
@@ -210,6 +214,7 @@ class CoachGui(QMainWindow):
         self.rec_poll = QTimer(self)
         self.rec_poll.setInterval(500)
         self.rec_poll.timeout.connect(self._poll_recorder)
+        QTimer.singleShot(0, self._auto_start_recording)
         QTimer.singleShot(0, self._check_update)
 
     # ---------- Oberfläche ----------
@@ -225,6 +230,10 @@ class CoachGui(QMainWindow):
         grid.addWidget(browse, 0, 2)
         self.rec_state_label = QLabel(self.t["rec_state_stopped"])
         grid.addWidget(self.rec_state_label, 1, 0, 1, 3)
+        self.auto_record_check = QCheckBox(self.t["auto_record"])
+        self.auto_record_check.setChecked(bool(self.config.get("auto_record", True)))
+        self.auto_record_check.toggled.connect(self._toggle_auto_record)
+        grid.addWidget(self.auto_record_check, 2, 0, 1, 3)
         row = QHBoxLayout()
         self.rec_start_btn = QPushButton(self.t["start"])
         self.rec_start_btn.clicked.connect(self.start_recording)
@@ -337,6 +346,37 @@ class CoachGui(QMainWindow):
         except Exception:
             pass
 
+    def _persist_auto_record(self, enabled):
+        """auto_record in der Config sichern (Fehler still — Aufnahme läuft weiter)."""
+        try:
+            path = self._config_path or default_config_path()
+            try:
+                data = load_gui_config(path)[0]
+            except Exception:
+                data = {}
+            from .bridge_config import save_config
+            data["auto_record"] = bool(enabled)
+            save_config(path, data)
+            self._config_path = path
+        except Exception:
+            pass
+
+    def _auto_start_recording(self):
+        """0.8.1: Wie PitBoss — die App startet die Aufzeichnung von selbst."""
+        if self.auto_record_check.isChecked():
+            self.start_recording()
+            self.rec_state_label.setText(self.t["auto_started"])
+
+    def _toggle_auto_record(self, checked):
+        self._persist_auto_record(checked)
+        if checked:
+            if self.recorder is None:
+                self.start_recording()
+                self.rec_state_label.setText(self.t["auto_started"])
+        else:
+            if self.recorder is not None:
+                self.stop_recording()
+
     def start_recording(self):
         if self.recorder is not None:
             return
@@ -348,8 +388,13 @@ class CoachGui(QMainWindow):
         self.rec_start_btn.setEnabled(False)
         self.rec_stop_btn.setEnabled(True)
         self.rec_poll.start()
+        if not self.auto_record_check.isChecked():
+            self.auto_record_check.blockSignals(True)
+            self.auto_record_check.setChecked(True)
+            self.auto_record_check.blockSignals(False)
+            self._persist_auto_record(True)
 
-    def stop_recording(self):
+    def stop_recording(self, user_stop=True):
         if self.recorder is None:
             return
         rec = self.recorder
@@ -362,6 +407,11 @@ class CoachGui(QMainWindow):
         self.rec_state_label.setText(self.t["rec_state_stopped"])
         self.rec_start_btn.setEnabled(True)
         self.rec_stop_btn.setEnabled(False)
+        if user_stop and self.auto_record_check.isChecked():
+            self.auto_record_check.blockSignals(True)
+            self.auto_record_check.setChecked(False)
+            self.auto_record_check.blockSignals(False)
+            self._persist_auto_record(False)
 
     def _poll_recorder(self):
         """Fragt den Recorder-Status ab (reiner Lesezugriff im GUI-Thread)."""
@@ -385,7 +435,7 @@ class CoachGui(QMainWindow):
                 self.log_edit.setText(path)  # neueste Aufzeichnung direkt zum Analysieren
 
     def closeEvent(self, event):
-        self.stop_recording()
+        self.stop_recording(user_stop=False)
         super().closeEvent(event)
 
     # ---------- Analyse ----------

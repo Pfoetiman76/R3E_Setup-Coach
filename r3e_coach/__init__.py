@@ -1,4 +1,4 @@
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 
 from .advice import build_advice
 from .logdata import read_log, session_from_log, write_log

@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "0.8.0"
+#define MyAppVersion "0.8.1"
 #endif
 #define MyAppName "R3E Setup-Coach"
 #define MyAppPublisher "Pfoetiman76"

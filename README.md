@@ -27,6 +27,7 @@ Der Coach liest die offizielle Shared-Memory-Schnittstelle von RaceRoom (`$R3E`,
 
 - Strecke/Layout/Fahrzeug stehen automatisch im Log (auch für die Analyse und `setups.json`).
 - Zielordner standardmäßig: `Dokumente\R3E Setup-Coach\recordings`.
+- **GUI: automatische Aufzeichnung ab 0.8.1** — die App startet den Rekorder von selbst und wartet auf RaceRoom; ein manueller Start ist nicht mehr nötig (Haken „Automatisch aufzeichnen", persistiert als `auto_record`).
 - Alte R2M/MoTeC-CSV-Dateien werden nicht mehr gelesen; `bridge`-Kommando und MoTeC-Parser sind entfernt.
 
 ```bash
@@ -49,7 +50,7 @@ r3e-coach update --check
 r3e-coach gui
 ```
 
-Die Oberfläche hat drei Bereiche: **1) Aufzeichnen** (Zielordner wählen, „Aufzeichnung starten", Status zeigt Warten/Menü/Pause/Box/Aufzeichnung; jede fertige Sitzung wird als `.coachlog` gesichert und automatisch im Reiter 2 eingetragen), **2) Telemetrie analysieren** (Log per Dialog wählen, Strecke/Layout/Fahrzeug füllen sich aus dem Log; der Bericht erscheint im Fenster, mit „Analysieren und speichern" landet die Analyse in der Setup-Sammlung) und **3) Setups** (gespeicherte Setups mit Zielzeit, Best-/Ø-Zeiten aus R3E-Resultate und Detailansicht; Doppelklick öffnet den Eintrag, Zielzeit und Notizen sind editierbar).
+Die Oberfläche hat drei Bereiche: **1) Aufzeichnen** (die Aufzeichnung beginnt **automatisch, sobald RaceRoom läuft** — wie in PitBoss genügt das Starten der App; der Haken „Automatisch aufzeichnen" ist standardmäßig gesetzt und wird in der Config gespeichert, der Zielordner ist einstellbar; jede fertige Sitzung wird als `.coachlog` gesichert und automatisch im Reiter 2 eingetragen), **2) Telemetrie analysieren** (Log per Dialog wählen, Strecke/Layout/Fahrzeug füllen sich aus dem Log; der Bericht erscheint im Fenster, mit „Analysieren und speichern" landet die Analyse in der Setup-Sammlung) und **3) Setups** (gespeicherte Setups mit Zielzeit, Best-/Ø-Zeiten aus R3E-Resultate und Detailansicht; Doppelklick öffnet den Eintrag, Zielzeit und Notizen sind editierbar).
 
 **„Empfohlene nächste Schritte“** (ab 0.7.0): Der Bericht endet mit priorisierten, konkreten Hinweisen — z. B. „Stabi vorne: 4 → 3“ statt nur „Untersteuern“. Sind Werte des aktuellen Setups in `setups.json` gespeichert (Fahrwerk/Reifen im Reiter 3), nennt der Coach das konkrete Ziel, sonst eine gerichtete Stufenänderung.
 

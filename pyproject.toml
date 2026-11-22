@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "r3e-setup-coach"
-version = "0.8.0"
+version = "0.8.1"
 description = "Zeichnet RaceRoom-Telemetrie über die R3E-Shared-Memory-Schnittstelle auf und gibt konkrete Setup-Empfehlungen"
 readme = "README.md"
 requires-python = ">=3.9"
