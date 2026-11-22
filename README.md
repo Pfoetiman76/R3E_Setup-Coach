@@ -26,7 +26,7 @@ r3e-coach record --hz 25 --wait
 Der Coach liest die offizielle Shared-Memory-Schnittstelle von RaceRoom (`$R3E`, Strukturversion 3.6, pack(1)) direkt aus — 50 Mal pro Sekunde. Daraus entsteht eine eigene, lesbare Logdatei pro Sitzung (`.coachlog`, Textformat mit Kopfdaten). Das löst auch das bekannte R2M-Problem: **ESC ins Menü oder ein Sessionwechsel beendet eine Aufzeichnung nicht mehr abrupt**, sondern schließt die Datei sauber und beginnt bei Rückkehr auf die Strecke automatisch eine neue.
 
 - Strecke/Layout/Fahrzeug stehen automatisch im Log (auch für die Analyse und `setups.json`).
-- Zielordner standardmäßig: `Dokumente\R3E Setup-Coach\recordings`.
+- Zielordner standardmäßig: `Dokumente\R3E Setup-Coach\recordings`. Dort liegt zusätzlich `coach-diagnose.txt` (ab 0.9.2): ein Protokoll aller Ereignisse mit Uhrzeit (RaceRoom erkannt, Zustandswechsel, geschriebene Dateien, Fehler) — hilfreich, wenn die App während der Fahrt im VR-Headset nicht sichtbar ist.
 - **GUI: automatische Aufzeichnung ab 0.8.1** — die App startet den Rekorder von selbst und wartet auf RaceRoom; ein manueller Start ist nicht mehr nötig (Haken „Automatisch aufzeichnen", persistiert als `auto_record`).
 - Alte R2M/MoTeC-CSV-Dateien werden nicht mehr gelesen; `bridge`-Kommando und MoTeC-Parser sind entfernt.
 
