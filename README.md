@@ -101,7 +101,7 @@ Lokal bauen: `scripts\build_exe.bat` (App) + Inno Setup lokal mit `iscc installe
 
 ## Bridge-Exe automatisch starten (RaceRoom → MoTeC)
 
-Damit MoTeC i2 überhaupt Daten von RaceRoom bekommt, läuft üblicherweise ein kleines Bridge-Exe. Der Coach kann es starten, überwachen und per **Strg+C kontrolliert beenden**:
+Damit MoTeC i2 überhaupt Daten von RaceRoom bekommt, läuft üblicherweise ein kleines Bridge-Exe. Der Coach kann es starten, überwachen und per **Strg+C kontrolliert beenden**. **Ab 0.6.5 gibt es in der GUI einen Automatismus**: beendet sich die Bridge-Exe selbst (typisch bei ESC zurück ins Menü / Session-Wechsel), startet der Coach sie sofort neu — der Haken „Bridge automatisch neu starten” ist standardmäßig an. Beendet sich die Exe wiederholt innerhalb weniger Sekunden, schaltet der Coach den Neustart vorsorglich ab (kein Endlos-Neustart). Der Haken wird als `bridge_auto_restart` in der Config gespeichert; der „Bridge stoppen”-Knopf beendet wie gehabt endgültig:
 
 ```bash
 r3e-coach bridge --exe "C:\Tools\R3E_MoTeC_Bridge.exe"
