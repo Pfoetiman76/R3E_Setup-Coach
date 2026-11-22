@@ -10,12 +10,11 @@ nicht — die Vorspann-Offsets sind dadurch unverändert gültig.
 
 Wichtig für Prüfbarkeit: Alle Strukturen sind auch offline testbar,
 indem ein synthetischer Puffer über dieselben Structs erzeugt und
-gelesen wird (Tests/test_r3e_shared.py). Unter Windows wird der
-echte Shared Memory über mmap angehängt.
+gelesen wird (Tests/test_r3e_shared.py). Unter Windows wird der echte
+Shared Memory über OpenFileMappingW angebunden.
 """
 
 import ctypes as _ctypes
-import mmap
 import os
 import sys
 import time
@@ -23,6 +22,28 @@ import time
 R3E_SHARED_MEMORY_NAME = "$R3E"
 R3E_VERSION_MAJOR = 3
 R3E_VERSION_MINOR = 6
+
+
+class _MemoryBasicInformation(_ctypes.Structure):
+    """VIRTUAL_MEMORY_STRUCTURES: MEMORY_BASIC_INFORMATION (VirtualQuery)."""
+    _fields_ = [
+        ("BaseAddress", _ctypes.c_void_p),
+        ("AllocationBase", _ctypes.c_void_p),
+        ("AllocationProtect", _ctypes.c_uint32),
+        ("RegionSize", _ctypes.c_size_t),
+        ("State", _ctypes.c_uint32),
+        ("Protect", _ctypes.c_uint32),
+        ("Type", _ctypes.c_uint32),
+    ]
+
+
+def _mapped_view_size(k32, view):
+    """Echte Größe der eingebundenen Sicht (wie PitBoss R3E, VirtualQuery)."""
+    mbi = _MemoryBasicInformation()
+    if k32.VirtualQuery(_ctypes.c_void_p(view), _ctypes.byref(mbi),
+                        _ctypes.sizeof(mbi)):
+        return int(mbi.RegionSize)
+    return 0
 
 TIRE_FL = 0
 TIRE_FR = 1
@@ -404,12 +425,15 @@ class TelemetryFrame:
 
 
 class R3EMemory:
-    """Anbindung an "$R3E": echtes mmap unter Windows, injizierbarer
-    Byte-Puffer für Tests (non-Windows/CI)."""
+    """Anbindung an "$R3E": echte Windows-Sicht (OpenFileMappingW) oder
+    injizierbarer Byte-Puffer für Tests (non-Windows/CI)."""
 
     def __init__(self, mem=None, name=R3E_SHARED_MEMORY_NAME):
         self._name = name
         self._map = None
+        self._map_handle = None
+        self._map_kernel = None
+        self._map_size = 0
         self._mem = mem
         self.tag_used = None
         if mem is None:
@@ -432,17 +456,37 @@ class R3EMemory:
     def _open(self):
         if os.name != "nt":
             raise OSError("R3E-Shared-Memory ist nur unter Windows verfügbar")
-        # 0.9.3: Drei Namensräume probieren. Manche Windows-Setups (Spiel
-        # oder Steam erhöht gestartet, andere Nutzersitzung) legen das
-        # Mapping statt in der lokalen Sitzung im globalen Namensraum ab.
-        for tag in (f"Local\\{self._name}", self._name, f"Global\\{self._name}"):
-            try:
-                self._map = mmap.mmap(0, 0, tag)
-                self._size = min(len(self._map), 4 * 1024 * 1024)
-                self.tag_used = tag
-                return
-            except (FileNotFoundError, OSError):
+        # 0.9.3.3: Öffnen EXAKT wie PitBoss R3E (bewährt auf Marcels
+        # Rechner): OpenFileMappingW NUR LESEN — anders als Pythons
+        # mmap-Mechanik (CreateFileMapping) legt das NIE selbst ein Mapping
+        # unter dem Spiel-Namen an und kann Spiel und Datenquelle nicht
+        # stören. Reihenfolge: nackter Name zuerst (Standard-Namespace der
+        # Sitzung), danach explizit Local\ und Global\.
+        k32 = _ctypes.WinDLL("kernel32", use_last_error=True)
+        vp, dw = _ctypes.c_void_p, _ctypes.c_uint32
+        k32.OpenFileMappingW.argtypes = [dw, _ctypes.c_int, _ctypes.c_wchar_p]
+        k32.OpenFileMappingW.restype = vp
+        k32.MapViewOfFile.argtypes = [vp, dw, dw, dw, _ctypes.c_size_t]
+        k32.MapViewOfFile.restype = vp
+        k32.UnmapViewOfFile.argtypes = [vp]
+        k32.UnmapViewOfFile.restype = _ctypes.c_int
+        k32.CloseHandle.argtypes = [vp]
+        k32.CloseHandle.restype = _ctypes.c_int
+        FILE_MAP_READ = 0x0004
+        for tag in (self._name, f"Local\\{self._name}", f"Global\\{self._name}"):
+            handle = k32.OpenFileMappingW(FILE_MAP_READ, False, tag)
+            if not handle:
                 continue
+            view = k32.MapViewOfFile(handle, FILE_MAP_READ, 0, 0, 0)
+            if not view:
+                k32.CloseHandle(handle)
+                continue
+            self._map = view          # Adresse der eingebundenen Sicht
+            self._map_handle = handle
+            self._map_kernel = k32
+            self._map_size = _mapped_view_size(k32, view)
+            self.tag_used = tag
+            return
         raise FileNotFoundError(f'RaceRoom-Shared-Memory "{self._name}" nicht gefunden')
 
     def is_real(self):
@@ -450,8 +494,15 @@ class R3EMemory:
 
     def read_frame(self):
         """Liest den Datensatz ein (Kopie) und liefert einen TelemetryFrame."""
-        if self._map is not None:
-            buf = self._map[: _ctypes.sizeof(R3EShared)]
+        want = _ctypes.sizeof(R3EShared)
+        if self._map is not None and self._map_handle is not None:
+            # 0.9.3.3: eingebundene Windows-Sicht (Adresse, kein mmap-Objekt)
+            size = min(want, self._map_size or want)
+            buf = _ctypes.string_at(self._map, size)
+            if len(buf) < want:
+                buf = buf + b"\x00" * (want - len(buf))
+        elif self._map is not None:
+            buf = self._map[:want]
         elif self._mem is not None:
             buf = bytes(self._mem)[: (len(self._mem) if self._mem else 0)]
             if len(buf) < _ctypes.sizeof(R3EShared):
@@ -463,7 +514,17 @@ class R3EMemory:
         return TelemetryFrame(shared)
 
     def close(self):
-        if self._map is not None:
+        if self._map is not None and self._map_handle is not None:
+            try:
+                k32 = self._map_kernel
+                k32.UnmapViewOfFile(self._map)
+                k32.CloseHandle(self._map_handle)
+            except Exception:
+                pass
+            self._map = None
+            self._map_handle = None
+            self._map_kernel = None
+        elif self._map is not None:
             try:
                 self._map.close()
             except Exception:
