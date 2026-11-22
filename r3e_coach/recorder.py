@@ -188,7 +188,13 @@ class Recorder:
         if self.memory is None:
             try:
                 self.memory = self._open_memory()
-            except (FileNotFoundError, OSError) as exc:
+            except FileNotFoundError:
+                # 0.9.1: Spiel läuft schlicht nicht — normales Warten statt
+                # irreführender "Fehler"-Meldung in der Statusleiste.
+                self._set_state(STATE_WAITING)
+                self._sleep(0.5)
+                return None
+            except OSError as exc:
                 self.error = str(exc)
                 self._set_state(STATE_WAITING)
                 self._sleep(0.5)
