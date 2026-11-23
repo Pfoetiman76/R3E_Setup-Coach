@@ -19,6 +19,10 @@ class Finding:
 @dataclass
 class Ctx:
     min_speed: float = 40.0
+    # 0.9.4.0: Aero-Balance — Bänder für Schnell-/Langsamkurven (km/h)
+    aero_fast_speed: float = 160.0
+    aero_slow_speed: float = 110.0
+    aero_min_samples: int = 10
 
 
 def _running_mask(session, min_speed):
@@ -266,7 +270,85 @@ def rule_consistency(session, ctx):
     return out
 
 
-RULES = [rule_tyre_temps, rule_handling, rule_brakes, rule_ride_height, rule_consistency]
+def rule_aero(session, ctx):
+    """0.9.4.0: Abtriebsbalance aus dem Lenkaufwand Schnell- vs. Langsamkurven.
+
+    Physik: In Schnellkurvenlastet der Abtrieb, in Langsamkurven spielt er
+    kaum eine Rolle. Benötigt das Auto in Schnellkurven deutlich mehr
+    Lenkwinkel pro g Querbeschleunigung als in Langsamkurven, fehlt Abtrieb
+    vorn (hecklastige Aero-Balance); wird das Heck in Schnellkurven bei
+    kleinem Lenkaufwand unruhig (viele Korrekturen), fehlt Abtrieb hinten.
+    """
+    out = []
+    if not (session.has("steer") and session.has("g_lat") and session.has("speed")):
+        return out
+    speed, steer, glat = session.col("speed"), session.col("steer"), session.col("g_lat")
+    n = min(len(speed), len(steer), len(glat))
+    fast_pg, slow_pg = [], []
+    prev_fast = None
+    prev_d = None
+    fast_corrections = 0
+    for i in range(n):
+        s, g, st = speed[i], glat[i], steer[i]
+        if (s is None or g is None or st is None
+                or abs(g) < 0.8 or s < ctx.min_speed):
+            continue
+        pg = abs(st) / max(abs(g), 0.1)
+        if s >= ctx.aero_fast_speed:
+            fast_pg.append(pg)
+            if prev_fast is not None:
+                d = st - prev_fast
+                if prev_d is not None and prev_d * d < 0 and abs(d) > 0.5:
+                    fast_corrections += 1
+                prev_d = d
+            prev_fast = st
+        elif s <= ctx.aero_slow_speed:
+            slow_pg.append(pg)
+    if len(fast_pg) < ctx.aero_min_samples or len(slow_pg) < ctx.aero_min_samples:
+        return out
+    fast_avg = sum(fast_pg) / len(fast_pg)
+    slow_avg = sum(slow_pg) / len(slow_pg)
+    if slow_avg <= 0.2:
+        return out
+    ratio = fast_avg / slow_avg
+    time = session.col("time")
+    duration_min = ((time[-1] - time[0]) / 60.0) if len(time) > 1 and time[0] is not None and time[-1] is not None else 1.0
+    fast_corr_min = fast_corrections / max(duration_min, 1e-9)
+    if ratio > 1.4:
+        out.append(Finding(
+            "aero_understeer", "aero", "medium",
+            {"de": f"Zu viel Lenkaufwand in Schnellkurven ({fast_avg:.1f}° pro g über {ctx.aero_fast_speed:.0f} km/h "
+                   f"gegenüber {slow_avg:.1f}° pro g in Langsamkurven) — Abtriebsbalance ist zu hecklastig.",
+             "en": f"Excess steering effort in fast corners ({fast_avg:.1f}° per g above {ctx.aero_fast_speed:.0f} km/h "
+                   f"vs {slow_avg:.1f}° per g in slow corners) — aero balance is too rear-heavy."},
+            [{"de": "Frontflügel eine Stufe höher (R3E-Menü: Aero).",
+              "en": "Raise front wing one step (R3E menu: Aero)."},
+             {"de": "Alternativ Heckflügel eine Stufe niedriger — senkt Luftwiderstand und hält Abtrieb vorn.",
+              "en": "Alternatively lower rear wing one step — less drag, keeps front downforce."}],
+            data={"fast_steer_per_g": round(fast_avg, 1),
+                  "slow_steer_per_g": round(slow_avg, 1),
+                  "ratio": round(ratio, 2),
+                  "fast_speed": ctx.aero_fast_speed}))
+    elif ratio < 0.7 and fast_corr_min > 6.0:
+        out.append(Finding(
+            "aero_oversteer", "aero", "medium",
+            {"de": f"Heck in Schnellkurven unruhig ({fast_corr_min:.1f} Lenkkorrekturen/min bei "
+                   f"{fast_avg:.1f}° pro g) — Abtrieb hinten fehlt.",
+             "en": f"Rear is nervous in fast corners ({fast_corr_min:.1f} steering corrections/min at "
+                   f"{fast_avg:.1f}° per g) — rear downforce is missing."},
+            [{"de": "Heckflügel eine Stufe höher (R3E-Menü: Aero).",
+              "en": "Raise rear wing one step (R3E menu: Aero)."},
+             {"de": "Stabi hinten eine Stufe weicher, falls mehr Abtrieb nicht erwünscht.",
+              "en": "Soften rear anti-roll bar one step if more downforce is not wanted."}],
+            data={"fast_steer_per_g": round(fast_avg, 1),
+                  "slow_steer_per_g": round(slow_avg, 1),
+                  "ratio": round(ratio, 2),
+                  "fast_corrections_per_min": round(fast_corr_min, 1),
+                  "fast_speed": ctx.aero_fast_speed}))
+    return out
+
+
+RULES = [rule_tyre_temps, rule_handling, rule_aero, rule_brakes, rule_ride_height, rule_consistency]
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 

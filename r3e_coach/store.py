@@ -19,6 +19,8 @@ CHASSIS_FIELDS = (
     "arb_rear",
     "ride_height_front",
     "ride_height_rear",
+    "wing_front",
+    "wing_rear",
     "camber_front",
     "camber_rear",
     "toe_front",

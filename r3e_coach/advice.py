@@ -24,6 +24,8 @@ LABELS = {
     "arb_rear": {"de": "Stabi hinten", "en": "Rear anti-roll bar"},
     "ride_height_front": {"de": "Fahrzeughöhe vorn", "en": "Front ride height"},
     "ride_height_rear": {"de": "Fahrzeughöhe hinten", "en": "Rear ride height"},
+    "wing_front": {"de": "Frontflügel", "en": "Front wing"},
+    "wing_rear": {"de": "Heckflügel", "en": "Rear wing"},
     "brake_bias": {"de": "Bremsbalance", "en": "Brake balance"},
     "pressure_front": {"de": "Reifendruck vorne", "en": "Front tyre pressure"},
     "pressure_rear": {"de": "Reifendruck hinten", "en": "Rear tyre pressure"},
@@ -159,6 +161,23 @@ def build_advice(findings, chassis=None, tires=None):
         elif rule == "oversteer":
             out.append(_step_advice(rule, sev, "arb_rear", -1, "weicher", "softer",
                                     "Übersteuerneigung des Hecks", "rear oversteer tendency", chassis))
+        elif rule == "aero_understeer":
+            # 0.9.4.0: Abtriebsbalance zu hecklastig — mehr Abtrieb vorn
+            # (oder weniger hinten, wenn Luftwiderstand zählt).
+            out.append(_step_advice(rule, sev, "wing_front", +1, "höher", "higher",
+                                    "hoher Lenkaufwand in Schnellkurven — Abtrieb vorn fehlt",
+                                    "excess steering effort in fast corners — front downforce missing",
+                                    chassis))
+            out.append(_step_advice(rule, sev, "wing_rear", -1, "niedriger", "lower",
+                                    "Alternative zu mehr Frontabtrieb: Heckflügel senken",
+                                    "alternative to more front downforce: lower the rear wing",
+                                    chassis))
+        elif rule == "aero_oversteer":
+            # 0.9.4.0: Heck in Schnellkurven unruhig — Abtrieb hinten fehlt.
+            out.append(_step_advice(rule, sev, "wing_rear", +1, "höher", "higher",
+                                    "Heck in Schnellkurven unruhig — Abtrieb hinten fehlt",
+                                    "nervous rear in fast corners — rear downforce missing",
+                                    chassis))
         elif rule == "brake_balance":
             direction = data.get("direction", "too_front")
             delta = -2.0 if direction == "too_front" else +2.0
